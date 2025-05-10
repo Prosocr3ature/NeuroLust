@@ -50,12 +50,12 @@ else:
     prompt = st.text_area("Enter your custom prompt here", height=150)
 
 # ─── Image Generator ──────────────────────────────────────────────────────────
-def generate_image_realistic_vision(prompt: str) -> bytes:
+def generate_image_realistic_vision(prompt: str) -> str:
     model = "lucataco/realistic-vision-v5.1:2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb"
-    output = client.run(model, input={"prompt": prompt})
-    return output[0].read()
+    output_url = client.run(model, input={"prompt": prompt})
+    return output_url  # This is a URL string
 
-def generate_image_illust3relustion(prompt: str) -> bytes:
+def generate_image_illust3relustion(prompt: str) -> str:
     model = "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8"
     inputs = {
         "prompt": prompt,
@@ -66,8 +66,8 @@ def generate_image_illust3relustion(prompt: str) -> bytes:
         "refiner_strength": 0.6,
         "prompt_conjunction": True
     }
-    output = client.run(model, input=inputs)
-    return output[0].read()
+    output_url = client.run(model, input=inputs)
+    return output_url  # This is a URL string
 
 # ─── Trigger Generation ───────────────────────────────────────────────────────
 if st.button("🚀 Generate Image"):
@@ -77,11 +77,11 @@ if st.button("🚀 Generate Image"):
         with st.spinner("Generating image..."):
             try:
                 if model_choice == "Realistic Vision V5.1":
-                    image_data = generate_image_realistic_vision(prompt)
+                    image_url = generate_image_realistic_vision(prompt)
                 else:
-                    image_data = generate_image_illust3relustion(prompt)
+                    image_url = generate_image_illust3relustion(prompt)
 
                 st.subheader("🖼️ Generated Image")
-                st.image(image_data, use_container_width=True)
+                st.image(image_url, use_container_width=True)
             except Exception as e:
                 st.error(f"Image generation failed: {e}")
