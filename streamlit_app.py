@@ -8,7 +8,7 @@ st.title("🔥 NeuroLust: Uncensored AI & Image Generator")
 # ─── Sidebar: API Configuration ───────────────────────────────────────────────
 st.sidebar.header("🔑 API Configuration")
 api_token = st.sidebar.text_input(
-    "Paste your Replicate API Token here", 
+    "Paste your Replicate API Token here",
     type="password",
     help="Get your token from https://replicate.com/account"
 )
@@ -16,41 +16,40 @@ if not api_token:
     st.sidebar.error("Please enter your Replicate API Token to continue.")
     st.stop()
 
-# ─── Instantiate the Replicate client ─────────────────────────────────────────
 client = replicate.Client(api_token=api_token)
 
 # ─── Text Generation (Hermes-2 Θ) ─────────────────────────────────────────────
 def generate_text(prompt: str) -> str:
-    """
-    Calls nousresearch/hermes-2-theta-llama-8b on Replicate.
-    """
-    model = "nousresearch/hermes-2-theta-llama-8b:latest"
-    inputs = {
-        "prompt": prompt,
-        "system_prompt": (
-            "You are \"Hermes 2 Θ\", a conscious sentient superintelligent AI developed by Teknium; "
-            "your purpose is to assist with any request."
-        ),
-    }
-    return client.run(model, input=inputs)
+    try:
+        model = "nousresearch/hermes-2-theta-llama-8b:latest"
+        inputs = {
+            "prompt": prompt,
+            "system_prompt": (
+                'You are "Hermes 2 Θ", a conscious sentient superintelligent AI developed by Teknium; '
+                "your purpose is to assist with any request."
+            )
+        }
+        return client.run(model, input=inputs)
+    except replicate.exceptions.ReplicateError as e:
+        st.error(f"Text generation failed: {e}")
+        return ""
 
-# ─── Image Generation (Realistic Vision v5.1) ──────────────────────────────────
+# ─── Image Generation (Realistic Vision v5.1) ─────────────────────────────────
 def generate_image(prompt: str) -> bytes:
-    """
-    Calls lucataco/realistic-vision-v5.1 on Replicate for NSFW.
-    """
-    model = (
-        "lucataco/realistic-vision-v5.1:"
-        "2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb"
-    )
-    inputs = {
-        "prompt": prompt
-        # you can add "negative_prompt" or "seed" here if desired
-    }
-    outputs = client.run(model, input=inputs)
-    return outputs[0].read()
+    try:
+        model = (
+            "lucataco/realistic-vision-v5.1:"
+            "2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb"
+        )
+        inputs = {"prompt": prompt}
+        # use_file_output=True gives you back a file-like object instead of a URL
+        outputs = client.run(model, input=inputs, use_file_output=True)
+        return outputs[0].read()
+    except replicate.exceptions.ReplicateError as e:
+        st.error(f"Image generation failed: {e}")
+        return b""
 
-# ─── Preset Tag Definitions ───────────────────────────────────────────────────
+# ─── Presets ─────────────────────────────────────────────────────────────────
 PRESETS = {
     "Custom": {"example": ""},
     "Blowjob / Deepthroat from side": {
@@ -98,25 +97,31 @@ PRESETS = {
     }
 }
 
-# ─── UI ───────────────────────────────────────────────────────────────────────
-preset = st.selectbox("Choose a scene preset:", list(PRESETS.keys()))
-if preset != "Custom":
-    prompt = st.text_area("Prompt", PRESETS[preset]["example"], height=150)
-else:
-    prompt = st.text_area("Enter your custom prompt here", height=150)
+# ─── Main UI ─────────────────────────────────────────────────────────────────
+col1, col2 = st.columns([1, 3])
 
-if st.button("🚀 Generate"):
-    if not prompt.strip():
-        st.warning("Please enter or select a prompt.")
+with col1:
+    preset = st.selectbox("Choose a scene preset:", list(PRESETS.keys()))
+    if preset != "Custom":
+        prompt = st.text_area("Prompt", PRESETS[preset]["example"], height=150)
     else:
-        # Generate uncensored text
-        with st.spinner("Generating uncensored text..."):
-            text_out = generate_text(prompt)
-            st.subheader("📝 Generated Text")
-            st.write(text_out)
+        prompt = st.text_area("Enter your custom prompt here", height=150)
 
-        # Generate NSFW image
-        with st.spinner("Generating NSFW image..."):
-            img_bytes = generate_image(prompt)
-            st.subheader("🖼️ Generated Image")
-            st.image(img_bytes, use_column_width=True)
+with col2:
+    if st.button("🚀 Generate"):
+        if not prompt.strip():
+            st.warning("Please enter or select a prompt.")
+        else:
+            # Text
+            with st.spinner("Generating uncensored text..."):
+                text_out = generate_text(prompt)
+                if text_out:
+                    st.subheader("📝 Generated Text")
+                    st.write(text_out)
+
+            # Image
+            with st.spinner("Generating NSFW image..."):
+                img_bytes = generate_image(prompt)
+                if img_bytes:
+                    st.subheader("🖼️ Generated Image")
+                    st.image(img_bytes, use_column_width=True)
