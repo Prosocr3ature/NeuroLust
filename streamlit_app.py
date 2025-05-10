@@ -1,87 +1,63 @@
 import streamlit as st
 import replicate
 
-# ─── Page Config ─────────────────────────────────────────────────────────────
+# ─── Page Setup ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="NeuroLust", layout="wide")
-st.title("🔥 NeuroLust: Uncensored AI Image Generator")
+st.title("🔥 NeuroLust: NSFW Image Generator")
 
-# ─── Load API Token ──────────────────────────────────────────────────────────
-REPLICATE_TOKEN = st.secrets["REPLICATE_API_TOKEN"]
+# ─── API Token (from Streamlit secrets) ───────────────────────────────────────
+REPLICATE_TOKEN = st.secrets["replicate_api_token"]
 client = replicate.Client(api_token=REPLICATE_TOKEN)
 
-# ─── Preset Prompts ──────────────────────────────────────────────────────────
-PRESETS = {
-    "Custom": {"example": ""},
-    "Blowjob / Deepthroat from side": {
-        "example": (
-            "A nude woman with eyes closed while giving a blowjob to a man from the side, "
-            "long copper hair in ornate braids, wearing earrings and a choker, "
-            "realistic outdoors raw photo 8k, male pubic hair, testicles, deepthroat, "
-            "penis, tongue out, fellatio, close-up"
-        )
+# ─── Model Selection ──────────────────────────────────────────────────────────
+model_options = {
+    "Realistic Vision v5.1": {
+        "id": "lucataco/realistic-vision-v5.1:2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb",
+        "params": lambda prompt: {"prompt": prompt}
     },
-    "Facial": {
-        "example": (
-            "A woman with long hair, looking at the viewer with brown eyes and wearing jewelry; "
-            "she shows an open mouth and tongue as a nude man’s penis provides cum—"
-            "cum in mouth and cum on tongue—realistic raw photo"
-        )
-    },
-    "Doggystyle": {
-        "example": (
-            "Woman on all fours in doggystyle position with a man, realistic raw photo 8k; "
-            "sandy blonde hair, big ass, pussy, anus, big veiny penis, male pubic hair, hetero, solo focus"
-        )
-    },
+    "Illust3relustion": {
+        "id": "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8",
+        "params": lambda prompt: {
+            "prompt": prompt,
+            "steps": 20,
+            "refiner": True,
+            "upscale": "x2",
+            "scheduler": "Euler a beta",
+            "refiner_strength": 0.6,
+            "prompt_conjunction": True
+        }
+    }
 }
-
-# ─── Image Model Selection ────────────────────────────────────────────────────
-st.sidebar.header("Image Model")
-model_choice = st.sidebar.selectbox(
-    "Choose a model:",
-    ("Realistic Vision V5.1", "Illust3Relustion")
-)
+selected_model = st.selectbox("Choose a model:", list(model_options.keys()))
 
 # ─── Prompt Input ─────────────────────────────────────────────────────────────
-preset = st.selectbox("Choose a preset scene:", list(PRESETS.keys()))
-if preset != "Custom":
-    prompt = st.text_area("Prompt", PRESETS[preset]["example"], height=150)
-else:
-    prompt = st.text_area("Enter your custom prompt here", height=150)
+preset = st.selectbox("Choose a scene preset:", ["Custom", "Blowjob", "Missionary", "Facial", "Ahegao"])
+examples = {
+    "Blowjob": "A nude woman with copper hair giving a deep blowjob from the side, ornate braids, choker, male pubic hair, 8K photo",
+    "Missionary": "Woman in missionary position, spread legs, visible pussy and penis, emerald striped socks, 8K realism",
+    "Facial": "Cum on woman's tongue and face, mouth open, realistic 8K detail, brown eyes and jewelry",
+    "Ahegao": "Woman making exaggerated ahegao face, tongue out, eyes crossed, 8K raw closeup",
+    "Custom": ""
+}
+default_prompt = examples[preset]
+prompt = st.text_area("Enter your prompt", default_prompt, height=160)
 
-# ─── Image Generator ──────────────────────────────────────────────────────────
-def generate_image_realistic_vision(prompt: str) -> str:
-    model = "lucataco/realistic-vision-v5.1:2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb"
-    output_url = client.run(model, input={"prompt": prompt})
-    return output_url  # This is a URL string
-
-def generate_image_illust3relustion(prompt: str) -> str:
-    model = "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8"
-    inputs = {
-        "prompt": prompt,
-        "steps": 20,
-        "refiner": True,
-        "upscale": "x2",
-        "scheduler": "Euler a beta",
-        "refiner_strength": 0.6,
-        "prompt_conjunction": True
-    }
-    output_url = client.run(model, input=inputs)
-    return output_url  # This is a URL string
-
-# ─── Trigger Generation ───────────────────────────────────────────────────────
-if st.button("🚀 Generate Image"):
+# ─── Generate Button ──────────────────────────────────────────────────────────
+if st.button("🚀 Generate NSFW Image"):
     if not prompt.strip():
         st.warning("Please enter a prompt.")
     else:
         with st.spinner("Generating image..."):
             try:
-                if model_choice == "Realistic Vision V5.1":
-                    image_url = generate_image_realistic_vision(prompt)
-                else:
-                    image_url = generate_image_illust3relustion(prompt)
+                model_info = model_options[selected_model]
+                output = client.run(model_info["id"], input=model_info["params"](prompt))
 
-                st.subheader("🖼️ Generated Image")
-                st.image(image_url, use_container_width=True)
+                for img in output:
+                    if isinstance(img, str) and img.startswith("http"):
+                        st.image(img, use_container_width=True)
+                    elif hasattr(img, "read"):
+                        st.image(img.read(), use_container_width=True)
+                    else:
+                        st.error("Unsupported image format.")
             except Exception as e:
-                st.error(f"Image generation failed: {e}")
+                st.error(f"Image generation failed: {e}") 
