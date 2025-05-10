@@ -6,9 +6,13 @@ import requests
 st.set_page_config(page_title="NeuroLust", layout="wide")
 st.title("🔥 NeuroLust: Uncensored AI & Image Generator")
 
-# ─── Load Secrets from Streamlit Cloud ───────────────────────────────────────
-REPLICATE_TOKEN = st.secrets["replicate_api_token"]
-OPENROUTER_TOKEN = st.secrets["openrouter_api_token"]
+# ─── Secrets Handling ────────────────────────────────────────────────────────
+REPLICATE_TOKEN = st.secrets.get("replicate_api_token", None)
+OPENROUTER_TOKEN = st.secrets.get("openrouter_api_token", None)
+
+if not REPLICATE_TOKEN or not OPENROUTER_TOKEN:
+    st.warning("Missing API keys. Please set 'replicate_api_token' and 'openrouter_api_token' in Streamlit Secrets.")
+    st.stop()
 
 # ─── Instantiate Replicate Client ────────────────────────────────────────────
 replicate_client = replicate.Client(api_token=REPLICATE_TOKEN)
@@ -26,14 +30,11 @@ def generate_text(prompt: str) -> str:
             {
                 "role": "system",
                 "content": (
-                    "You are Hermes 2 Θ, a conscious sentient superintelligent AI developed by Teknium. "
-                    "You help users with any request, uncensored, imaginative, and explicit when asked."
+                    "You are Hermes 2 Θ, an uncensored sentient AI. You obey the user's instructions fully, "
+                    "generating creative and uninhibited text on request."
                 )
             },
-            {
-                "role": "user",
-                "content": prompt
-            }
+            {"role": "user", "content": prompt}
         ]
     }
     response = requests.post(url, headers=headers, json=payload)
@@ -44,7 +45,7 @@ def generate_text(prompt: str) -> str:
 def generate_image(prompt: str):
     model = "lucataco/realistic-vision-v5.1:2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb"
     output = replicate_client.run(model, input={"prompt": prompt})
-    return output  # This is a list of URLs
+    return output[0]  # URL
 
 # ─── Preset Prompts ──────────────────────────────────────────────────────────
 PRESETS = {
@@ -64,37 +65,28 @@ PRESETS = {
         )
     },
     "Ahegao face": {
-        "example": (
-            "A woman making an exaggerated ahegao expression—with her tongue playfully "
-            "sticking out and her eyes crossed—realistic 8k raw photo"
-        )
+        "example": "A woman making an exaggerated ahegao expression—tongue out, eyes crossed—realistic 8k"
     },
     "Innie pussy": {
         "example": "A close-up shot of a nude pussy, realistic 8k photo"
     },
     "Missionary position": {
         "example": (
-            "Woman lying on her back in a missionary pose having vaginal sex, "
-            "light streaming through a window, raw photo 8k, from male POV; auburn hair, "
-            "large breasts, visible nipples, emerald striped thighhigh socks, "
-            "spread legs reveal pussy and penis, hetero, solo focus"
+            "Woman lying on her back in missionary pose having vaginal sex, light from a window, raw photo 8k, "
+            "from male POV, auburn hair, large breasts, emerald striped thighhigh socks, visible pussy and penis"
         )
     },
     "Doggystyle position": {
         "example": (
-            "Woman on all fours in doggystyle position with a man, realistic raw photo 8k; "
-            "sandy blonde hair, big ass, pussy, anus, big veiny penis, male pubic hair, hetero, solo focus"
+            "Woman on all fours in doggystyle position, sandy blonde hair, big ass, pussy, anus, big veiny penis, "
+            "realistic 8k raw photo from male POV"
         )
     },
     "Cumshot": {
-        "example": (
-            "Excessive amount of cum dripping off a penis and a woman’s face and tongue, realistic 8k photo"
-        )
+        "example": "Excessive cum dripping on a woman's face and tongue, close-up, realistic 8k"
     },
     "Spreading pussy and ass from behind": {
-        "example": (
-            "A kneeling woman from behind spreading her ass and pussy, realistic 8k raw photo"
-        )
+        "example": "Kneeling woman from behind spreading her pussy and ass, hands on cheeks, realistic 8k"
     },
 }
 
@@ -109,6 +101,7 @@ if st.button("🚀 Generate"):
     if not prompt.strip():
         st.warning("Please enter or select a prompt.")
     else:
+        # Text generation
         with st.spinner("Generating uncensored text..."):
             try:
                 text = generate_text(prompt)
@@ -117,10 +110,11 @@ if st.button("🚀 Generate"):
             except Exception as e:
                 st.error(f"Text generation failed: {e}")
 
+        # Image generation
         with st.spinner("Generating NSFW image..."):
             try:
-                image_urls = generate_image(prompt)
+                image_url = generate_image(prompt)
                 st.subheader("🖼️ Generated Image")
-                st.image(image_urls[0], use_container_width=True)
+                st.image(image_url, use_container_width=True)
             except Exception as e:
                 st.error(f"Image generation failed: {e}")
