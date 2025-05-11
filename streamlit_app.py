@@ -2,6 +2,7 @@ import streamlit as st
 import replicate
 import io
 from PIL import Image
+import random
 
 # ─── Page Config ─────────────────────────────────────────────────────────────
 st.set_page_config(page_title="NeuroLust", layout="wide")
@@ -66,12 +67,16 @@ with st.sidebar:
             if config["type"] == "slider":
                 value = st.slider(config["label"], config["min"], config["max"], config["default"])
                 if param_name in ["width", "height"]:
-                    value = int(value // 8) * 8  # Ensure divisible by 8
+                    value = int(value // 8) * 8
                 model_params[param_name] = value
             elif config["type"] == "select":
                 model_params[param_name] = st.selectbox(config["label"], config["options"], index=config["options"].index(config["default"]))
-        
-        seed = st.number_input("Seed", value=13961)
+
+        use_random_seed = st.checkbox("Use random seed", value=True)
+        if use_random_seed:
+            seed = random.randint(1, 999999)
+        else:
+            seed = st.number_input("Seed", value=13961)
 
 # ─── Image Generation ────────────────────────────────────────────────────────
 if st.button("Generate"):
@@ -93,9 +98,7 @@ if st.button("Generate"):
         try:
             outputs = replicate_client.run(model_config["ref"], input=input_payload)
 
-            # Normalize all possible output types to image_url
             image_url = None
-
             if isinstance(outputs, list):
                 if hasattr(outputs[0], "url"):
                     image_url = outputs[0].url
@@ -108,13 +111,13 @@ if st.button("Generate"):
 
             if image_url:
                 st.image(image_url, caption="Generated Image", use_container_width=True)
-                st.success("Generation complete! Tip: Use cinematic or anatomical keywords for best output.")
+                st.success("Generation complete! Tip: Vary prompts, models, or disable seed for new results.")
             else:
                 st.error("Unsupported image format or no image returned.")
 
         except Exception as e:
             st.error(f"Image generation failed: {str(e)}")
-            st.info("Common fixes: 1) NSFW filters 2) Different seed 3) Lower steps or resolution")
+            st.info("Common fixes: 1) NSFW filters 2) Try different seed 3) Lower steps/resolution")
 
 # ─── Prompt Tips ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("""
