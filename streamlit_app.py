@@ -16,7 +16,7 @@ NSFW_LEVELS = { "Vanilla": "nude, soft lighting, erotic, sensual, highly detaile
 
 PRESETS = { "Princess Jasmine Nude": { "prompt": "Princess Jasmine nude, seductive arabian princess, long black hair, large breasts, spread legs, wet, cum dripping, soft caramel skin, hyper-realistic, 8k, erotic pose", "negative": "cartoon, blurry, bad anatomy, unrealistic, lowres, watermark" }, "Hardcore POV Sex": { "prompt": "beautiful nude woman giving blowjob POV, open mouth, tongue out, saliva dripping, deepthroat, ultra realistic, 8k, wet skin, cinematic lighting", "negative": "deformed, blurry, bad hands, cartoon, unrealistic, duplicate, cropped" }, "Full Body Glamour": { "prompt": "full body nude glamour model, large breasts, arched back, natural lighting, wet skin, realistic nipples, erotic expression, 8k photo, highly detailed", "negative": "lowres, low quality, jpeg artifacts, poorly drawn face" } }
 
-with st.sidebar: st.header("Model & Preset") model_choice = st.selectbox("Choose Model", list(MODELS.keys())) st.image(MODELS[model_choice]["preview"], caption=model_choice, use_column_width=True)
+with st.sidebar: st.header("Model & Preset") model_choice = st.selectbox("Choose Model", list(MODELS.keys())) st.image(MODELS[model_choice].get("preview", None), caption=model_choice, use_column_width=True)
 
 preset_choice = st.selectbox("Choose Prompt Preset", list(PRESETS.keys()))
 nsfw_level = st.selectbox("NSFW Level", list(NSFW_LEVELS.keys()))
@@ -29,10 +29,10 @@ preset = PRESETS[preset_choice]
 prompt = st.text_area("Prompt", value=f"{preset['prompt']}, {pose}, {NSFW_LEVELS[nsfw_level]}", height=150)
 negative_prompt = st.text_area("Negative Prompt", value=preset["negative"], height=80)
 
-steps = st.slider("Steps", 20, 50, config["steps"])
-scale = st.slider("Guidance Scale", 1.0, 20.0, config["scale"])
-width = st.slider("Width", 512, 1024, config["width"])
-height = st.slider("Height", 512, 1024, config["height"])
+steps = st.slider("Steps", 20, 50, config.get("steps", 40))
+scale = st.slider("Guidance Scale", 1.0, 20.0, config.get("scale", 7.5))
+width = st.slider("Width", 512, 1024, config.get("width", 768))
+height = st.slider("Height", 512, 1024, config.get("height", 1024))
 
 scheduler = None
 if "scheduler" in config:
@@ -59,7 +59,6 @@ try:
     with st.spinner("Generating..."):
         output = replicate_client.run(config["ref"], input=payload)
 
-        image_url = None
         if isinstance(output, list):
             for item in output:
                 if hasattr(item, "read"):
