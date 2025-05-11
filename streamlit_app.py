@@ -32,6 +32,10 @@ MODEL_OPTIONS = {
             "refiner_strength": 0.6,
             "prompt_conjunction": True
         }
+    },
+    "Flux Dev (asiryan)": {
+        "ref": "asiryan/flux-dev:6871951c85104c710f9a723c3151465b88f4d9190919d498bfe99f8d94bc5197",
+        "input_keys": ["prompt"]
     }
 }
 
@@ -52,10 +56,9 @@ PRESETS = {
             "8K ultra detailed realistic close-up"
         )
     },
-    "Doggy Style Outdoor": {
+    "Food Art Example": {
         "example": (
-            "Woman in doggy style on grass, nude, large breasts, perfect ass, penis visible, "
-            "sunlight, 8K realism"
+            "black forest gateau cake spelling out the words \"FLUX DEV\", tasty, food photography, dynamic shot"
         )
     }
 }
@@ -67,17 +70,17 @@ def generate_image(prompt: str, model_key: str) -> BytesIO:
     inputs = {key: model_info.get("defaults", {}).get(key, None) for key in model_info["input_keys"]}
     inputs["prompt"] = prompt
 
-    # Filter out keys with None values
+    # Clean up any None values
     inputs = {k: v for k, v in inputs.items() if v is not None}
 
     outputs = replicate_client.run(model_ref, input=inputs)
 
-    # Handle single or multiple outputs
-    if hasattr(outputs, "read"):  # FileOutput type
+    # Handle FileOutput or iterable
+    if hasattr(outputs, "read"):  # Single FileOutput
         return BytesIO(outputs.read())
-    else:  # iterable of file-like outputs
-        first = next(iter(outputs), None)
-        return BytesIO(first.read()) if first else None
+    else:  # Iterable
+        for item in outputs:
+            return BytesIO(item.read())  # Return first image only
 
 # ─── UI Layout ───────────────────────────────────────────────────────────────
 preset = st.selectbox("Choose a scene preset:", list(PRESETS.keys()))
