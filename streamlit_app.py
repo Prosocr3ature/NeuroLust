@@ -56,13 +56,12 @@ with st.sidebar:
         for param_name, config in MODELS[model_choice]["params"].items():
             if config["type"] == "slider":
                 value = st.slider(config["label"], config["min"], config["max"], config["default"])
-                # Force divisibility by 8 for width/height
                 if param_name in ["width", "height"]:
-                    value = int(value // 8) * 8
+                    value = int(value // 8) * 8  # enforce divisibility by 8
                 model_params[param_name] = value
             elif config["type"] == "select":
                 model_params[param_name] = st.selectbox(config["label"], config["options"], index=config["options"].index(config["default"]))
-
+        
         seed = st.number_input("Seed", value=13961)
 
 # ─── Image Generation ────────────────────────────────────────────────────────
@@ -84,30 +83,32 @@ if st.button("Generate"):
     with st.spinner("Generating image..."):
         try:
             outputs = replicate_client.run(model_config["ref"], input=input_payload)
+            st.write("RAW OUTPUT:")
+            st.write(outputs)
 
-            if isinstance(outputs, list):
-                cols = st.columns(len(outputs))
-                for i, (col, item) in enumerate(zip(cols, outputs)):
-                    if isinstance(item, str) and item.startswith("http"):
-                        col.image(item, caption=f"Image {i+1}", use_container_width=True)
-                    else:
-                        col.warning("Unsupported image format.")
+            image_url = None
+
+            if isinstance(outputs, dict) and "image" in outputs:
+                image_url = outputs["image"]
+            elif isinstance(outputs, list) and isinstance(outputs[0], str) and outputs[0].startswith("http"):
+                image_url = outputs[0]
+            elif isinstance(outputs, str) and outputs.startswith("http"):
+                image_url = outputs
+
+            if image_url:
+                st.image(image_url, caption="Generated Image", use_container_width=True)
+                st.success("Generation complete! Tip: Use cinematic or anatomical keywords for best output.")
             else:
-                if isinstance(outputs, str) and outputs.startswith("http"):
-                    st.image(outputs, caption="Generated Image", use_container_width=True)
-                else:
-                    st.warning("Unsupported image format.")
-
-            st.success("Generation complete! Tip: Use cinematic or anatomical keywords for best output.")
+                st.error("Unsupported image format or no image returned.")
 
         except Exception as e:
             st.error(f"Image generation failed: {str(e)}")
-            st.info("Common fixes: 1) NSFW restrictions 2) Try different seed 3) Lower steps or change scheduler")
+            st.info("Common fixes: 1) Check NSFW content restrictions 2) Try different seed 3) Reduce steps or scale")
 
 # ─── Prompt Tips ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("""
 **Prompt Tips:**
-- Use terms like: "perfect symmetry", "voluptuous", "cinematic lighting"
-- Describe: pose, skin tone, clothing, setting
-- Add mood or emotion: "lustful expression", "submissive pose"
+- "full body, natural lighting, realistic texture"
+- "lustful pose, cinematic lighting, wet skin"
+- "soft light, 8k photorealistic, hyper detailed"
 """)
