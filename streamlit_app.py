@@ -1,105 +1,32 @@
-import streamlit as st
-import replicate
-from io import BytesIO
+import streamlit as st import replicate import io from PIL import Image
 
-# ─── Page Config ─────────────────────────────────────────────────────────────
-st.set_page_config(page_title="NeuroLust: Uncensored AI Image Generator", layout="wide")
-st.title("🔥 NeuroLust: Uncensored AI Image Generator")
+─── Page Config ─────────────────────────────────────────────────────────────
 
-# ─── API Token from Secrets ──────────────────────────────────────────────────
-try:
-    REPLICATE_TOKEN = st.secrets["REPLICATE_API_TOKEN"]
-except KeyError:
-    st.error("Replicate API token not found in Streamlit secrets.")
-    st.stop()
+st.set_page_config(page_title="NeuroLust", layout="wide") st.title("🔥 NeuroLust: Uncensored Image Generator")
 
-replicate_client = replicate.Client(api_token=REPLICATE_TOKEN)
+─── Load API Token ──────────────────────────────────────────────────────────
 
-# ─── Model Options ───────────────────────────────────────────────────────────
-MODEL_OPTIONS = {
-    "Realistic Vision v5.1 (lucataco)": {
-        "ref": "lucataco/realistic-vision-v5.1:2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb",
-        "input_keys": ["prompt"]
-    },
-    "Illust3relustion (aisha-ai)": {
-        "ref": "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8",
-        "input_keys": ["prompt", "steps", "refiner", "upscale", "scheduler", "refiner_strength", "prompt_conjunction"],
-        "defaults": {
-            "steps": 20,
-            "refiner": True,
-            "upscale": "x2",
-            "scheduler": "Euler a beta",
-            "refiner_strength": 0.6,
-            "prompt_conjunction": True
-        }
-    },
-    "Flux Dev (asiryan)": {
-        "ref": "asiryan/flux-dev:6871951c85104c710f9a723c3151465b88f4d9190919d498bfe99f8d94bc5197",
-        "input_keys": ["prompt"]
-    }
-}
+REPLICATE_TOKEN = st.secrets["replicate_api_token"] replicate_client = replicate.Client(api_token=REPLICATE_TOKEN)
 
-# ─── Preset Prompts ──────────────────────────────────────────────────────────
-PRESETS = {
-    "Custom": {"example": ""},
-    "Blowjob POV": {
-        "example": (
-            "Princess Jasmine from Alladin, huge boobs, pierced nipples, gigantic ass, "
-            "hour-glass body, dark long wavy hair, wearing nothing but blue fishnet stockings, "
-            "giving a blowjob, semen dripping all over her face and body, drooling, POV from above, "
-            "8K realistic detailed photo"
-        )
-    },
-    "Facial Close-up": {
-        "example": (
-            "Anime girl with open mouth, cum on tongue, facial expression of bliss, "
-            "8K ultra detailed realistic close-up"
-        )
-    },
-    "Food Art Example": {
-        "example": (
-            "black forest gateau cake spelling out the words \"FLUX DEV\", tasty, food photography, dynamic shot"
-        )
-    }
-}
+─── Available Models ─────────────────────────────────────────────────────────
 
-# ─── Image Generation Function ───────────────────────────────────────────────
-def generate_image(prompt: str, model_key: str) -> BytesIO:
-    model_info = MODEL_OPTIONS[model_key]
-    model_ref = model_info["ref"]
-    inputs = {key: model_info.get("defaults", {}).get(key, None) for key in model_info["input_keys"]}
-    inputs["prompt"] = prompt
+MODELS = { "Realistic Vision v5.1": { "id": "lucataco/realistic-vision-v5.1:2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb", "params": lambda prompt, neg: {"prompt": prompt, "negative_prompt": neg}, }, "Illust3Relustion": { "id": "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8", "params": lambda prompt, neg: { "prompt": prompt, "negative_prompt": neg, "steps": 20, "refiner": True, "upscale": "x2", "scheduler": "Euler a beta", "refiner_strength": 0.6, "prompt_conjunction": True, }, }, "Realism XL": { "id": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219", "params": lambda prompt, neg: { "prompt": prompt, "negative_prompt": neg, }, }, }
 
-    # Clean up any None values
-    inputs = {k: v for k, v in inputs.items() if v is not None}
+─── Preset Tags ─────────────────────────────────────────────────────────────
 
-    outputs = replicate_client.run(model_ref, input=inputs)
+PRESETS = { "Custom": "", "Blowjob Side POV": "A nude woman giving a blowjob from side, cum on face, deepthroat, POV, realistic, 8K", "Facial Cumshot": "A woman receiving a facial, cum on tongue and lips, realistic detail, 8K", "Missionary POV": "Woman in missionary position having sex, visible pussy and penis, male POV, realistic 8K", "Doggystyle": "Woman on all fours from behind in doggystyle, anus and pussy visible, realistic POV, 8K", "Ahegao Face": "A woman making an exaggerated ahegao face, tongue out, eyes crossed, realistic 8K" }
 
-    # Handle FileOutput or iterable
-    if hasattr(outputs, "read"):  # Single FileOutput
-        return BytesIO(outputs.read())
-    else:  # Iterable
-        for item in outputs:
-            return BytesIO(item.read())  # Return first image only
+─── UI ───────────────────────────────────────────────────────────────────────
 
-# ─── UI Layout ───────────────────────────────────────────────────────────────
-preset = st.selectbox("Choose a scene preset:", list(PRESETS.keys()))
-prompt = st.text_area("Enter your custom prompt here:" if preset == "Custom" else "Prompt",
-                      PRESETS[preset]["example"] if preset != "Custom" else "", height=150)
+preset = st.selectbox("Choose a scene preset:", list(PRESETS.keys())) prompt = st.text_area("Prompt", PRESETS[preset], height=100) neg_prompt = st.text_area("Negative Prompt (optional)", value="blurry, low quality, extra limbs", height=60) model_name = st.selectbox("Choose Image Model:", list(MODELS.keys()))
 
-model_choice = st.selectbox("Choose a model:", list(MODEL_OPTIONS.keys()))
+if st.button("🚀 Generate Image"): if not prompt.strip(): st.warning("Please enter a prompt.") else: with st.spinner("Generating image..."): try: model_info = MODELS[model_name] inputs = model_info["params"](prompt, neg_prompt) output = replicate_client.run(model_info["id"], input=inputs)
 
-if st.button("🖼️ Generate Image"):
-    if not prompt.strip():
-        st.warning("Please enter a prompt first.")
-    else:
-        with st.spinner("Generating your image..."):
-            try:
-                image_bytes = generate_image(prompt, model_choice)
-                if image_bytes:
-                    st.subheader("Generated Image")
-                    st.image(image_bytes, use_container_width=True)
-                else:
-                    st.error("Image generation failed. No image returned.")
-            except Exception as e:
-                st.error(f"Image generation failed: {e}")
+# Save and display each image
+            for idx, image_file in enumerate(output):
+                image_data = image_file.read()
+                image = Image.open(io.BytesIO(image_data))
+                st.image(image, caption=f"Result {idx+1}", use_container_width=True)
+        except Exception as e:
+            st.error(f"Image generation failed: {e}")
+
