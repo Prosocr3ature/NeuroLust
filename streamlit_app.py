@@ -1,15 +1,9 @@
 import streamlit as st
 import replicate
 import os
-import requests
 
-# ─── API Token from Streamlit Secrets ─────────────────────────────────────────
-REPLICATE_TOKEN = st.secrets.get("replicate_api_token", "")
-
-if not REPLICATE_TOKEN:
-    st.error("Replicate API token not found in secrets. Please add it.")
-    st.stop()
-
+# ─── Manual API Token ─────────────────────────────────────────────────────────
+REPLICATE_TOKEN = "your_replicate_token_here"  # <-- Replace with your token
 os.environ["REPLICATE_API_TOKEN"] = REPLICATE_TOKEN
 
 # ─── Page Setup ───────────────────────────────────────────────────────────────
@@ -45,25 +39,21 @@ MODELS = {
 }
 
 # ─── UI: Prompt Inputs ────────────────────────────────────────────────────────
-selected_model = st.selectbox("Choose a model", list(MODELS.keys()))
-prompt = st.text_area("Prompt", height=150)
-neg_prompt = st.text_area("Negative Prompt (optional)", height=80)
+model_choice = st.selectbox("Choose a model", list(MODELS.keys()))
+prompt = st.text_area("Prompt", height=150, placeholder="Describe your scene...")
+neg_prompt = st.text_area("Negative Prompt (optional)", height=80, placeholder="Things to avoid (e.g. blurry, watermark, etc)")
 
-if st.button("Generate Image"):
+if st.button("🚀 Generate Image"):
     if not prompt.strip():
         st.warning("Please enter a prompt.")
-        st.stop()
-
-    with st.spinner("Generating image..."):
-        try:
-            model_info = MODELS[selected_model]
-            output = replicate.run(
-                model_info["id"],
-                input=model_info["params"](prompt, neg_prompt)
-            )
-            if isinstance(output, list):
-                st.image(output[0], use_container_width=True)
-            else:
-                st.error("Unexpected output type from model.")
-        except Exception as e:
-            st.error(f"Image generation failed: {e}")
+    else:
+        with st.spinner("Generating image..."):
+            try:
+                model = MODELS[model_choice]
+                result = replicate.run(model["id"], input=model["params"](prompt, neg_prompt))
+                if isinstance(result, list):
+                    st.image(result[0], use_container_width=True)
+                else:
+                    st.error("Image generation failed or unexpected response.")
+            except Exception as e:
+                st.error(f"Image generation failed: {e}")
