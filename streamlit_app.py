@@ -40,6 +40,15 @@ MODELS = {
             "width": {"type": "slider", "label": "Width", "min": 512, "max": 1024, "default": 768},
             "height": {"type": "slider", "label": "Height", "min": 512, "max": 1024, "default": 768}
         }
+    },
+    "Realistic Vision v6.0": {
+        "ref": "lucataco/realistic-vision-v60:7e30a5b8d49c9a91a8ea4c2a370a5b1b5b0a7f7b0a9f9f7a8b7a8b7a8b7a8b7a",
+        "params": {
+            "steps": {"type": "slider", "label": "Sampling Steps", "min": 20, "max": 50, "default": 35},
+            "width": {"type": "slider", "label": "Width", "min": 512, "max": 1024, "default": 768},
+            "height": {"type": "slider", "label": "Height", "min": 512, "max": 1024, "default": 768},
+            "guidance_scale": {"type": "slider", "label": "Guidance Scale", "min": 1.0, "max": 20.0, "default": 7.0}
+        }
     }
 }
 
@@ -57,7 +66,7 @@ with st.sidebar:
             if config["type"] == "slider":
                 value = st.slider(config["label"], config["min"], config["max"], config["default"])
                 if param_name in ["width", "height"]:
-                    value = int(value // 8) * 8  # enforce divisibility by 8
+                    value = int(value // 8) * 8  # Ensure divisible by 8
                 model_params[param_name] = value
             elif config["type"] == "select":
                 model_params[param_name] = st.selectbox(config["label"], config["options"], index=config["options"].index(config["default"]))
@@ -83,15 +92,17 @@ if st.button("Generate"):
     with st.spinner("Generating image..."):
         try:
             outputs = replicate_client.run(model_config["ref"], input=input_payload)
-            st.write("RAW OUTPUT:")
-            st.write(outputs)
 
+            # Normalize all possible output types to image_url
             image_url = None
 
-            if isinstance(outputs, dict) and "image" in outputs:
+            if isinstance(outputs, list):
+                if hasattr(outputs[0], "url"):
+                    image_url = outputs[0].url
+                elif isinstance(outputs[0], str) and outputs[0].startswith("http"):
+                    image_url = outputs[0]
+            elif isinstance(outputs, dict) and "image" in outputs:
                 image_url = outputs["image"]
-            elif isinstance(outputs, list) and isinstance(outputs[0], str) and outputs[0].startswith("http"):
-                image_url = outputs[0]
             elif isinstance(outputs, str) and outputs.startswith("http"):
                 image_url = outputs
 
@@ -103,12 +114,12 @@ if st.button("Generate"):
 
         except Exception as e:
             st.error(f"Image generation failed: {str(e)}")
-            st.info("Common fixes: 1) Check NSFW content restrictions 2) Try different seed 3) Reduce steps or scale")
+            st.info("Common fixes: 1) NSFW filters 2) Different seed 3) Lower steps or resolution")
 
 # ─── Prompt Tips ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("""
 **Prompt Tips:**
-- "full body, natural lighting, realistic texture"
-- "lustful pose, cinematic lighting, wet skin"
-- "soft light, 8k photorealistic, hyper detailed"
+- "8k ultra-detailed, soft lighting, wet skin"
+- "realistic full-body, arched back, submissive pose"
+- "natural shadows, sharp details, lustful gaze"
 """)
