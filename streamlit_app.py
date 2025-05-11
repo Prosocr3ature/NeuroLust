@@ -14,7 +14,7 @@ if "REPLICATE_API_TOKEN" not in st.secrets:
 
 replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
 
-# ─── Updated Model Configuration with Parameter Mapping ───────────────────────
+# ─── Model Configuration ─────────────────────────────────────────────────────
 MODELS = {
     "Realism XL (Uncensored)": {
         "ref": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
@@ -46,38 +46,25 @@ MODELS = {
     }
 }
 
-# ─── Enhanced UI with Dynamic Parameter Handling ──────────────────────────────
+# ─── UI Sidebar ──────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Model Settings")
     model_choice = st.selectbox("Choose image model:", list(MODELS.keys()))
     
-    # Common parameters
-    prompt = st.text_area("Prompt", height=150, placeholder="Enter your detailed prompt...", 
-                         help="Use descriptive language, mention body features, lighting, and environment")
-    negative_prompt = st.text_area("Negative Prompt", height=80, placeholder="deformed, blurry, bad anatomy...",
-                                  value="deformed, blurry, bad anatomy, cartoonish, unrealistic")
+    prompt = st.text_area("Prompt", height=150, placeholder="Enter your detailed prompt...")
+    negative_prompt = st.text_area("Negative Prompt", height=80, placeholder="deformed, blurry, bad anatomy...", value="deformed, blurry, bad anatomy, cartoonish, unrealistic")
     
-    # Model-specific parameters
     model_params = {}
     with st.expander("Advanced Settings"):
         for param_name, config in MODELS[model_choice]["params"].items():
             if config["type"] == "slider":
-                model_params[param_name] = st.slider(
-                    label=config["label"],
-                    min_value=config["min"],
-                    max_value=config["max"],
-                    value=config["default"]
-                )
+                model_params[param_name] = st.slider(config["label"], config["min"], config["max"], config["default"])
             elif config["type"] == "select":
-                model_params[param_name] = st.selectbox(
-                    label=config["label"],
-                    options=config["options"],
-                    index=config["options"].index(config["default"])
-                )
+                model_params[param_name] = st.selectbox(config["label"], config["options"], index=config["options"].index(config["default"]))
         
-        seed = st.number_input("Seed", value=13961, help="For reproducibility")
+        seed = st.number_input("Seed", value=13961)
 
-# ─── Generation Logic with Fixed Parameter Mapping ────────────────────────────
+# ─── Image Generation ────────────────────────────────────────────────────────
 if st.button("Generate"):
     if not prompt.strip():
         st.warning("Please enter a prompt.")
@@ -86,7 +73,6 @@ if st.button("Generate"):
     st.info(f"Using model: {model_choice}")
     model_config = MODELS[model_choice]
     
-    # Build input payload
     input_payload = {
         "prompt": prompt.strip(),
         "negative_prompt": negative_prompt.strip(),
@@ -94,7 +80,6 @@ if st.button("Generate"):
         **model_params
     }
 
-    # Special parameter handling
     if "width" in input_payload and "height" in input_payload:
         input_payload["width"] = int(input_payload["width"])
         input_payload["height"] = int(input_payload["height"])
@@ -102,26 +87,35 @@ if st.button("Generate"):
     with st.spinner("Generating image..."):
         try:
             outputs = replicate_client.run(model_config["ref"], input=input_payload)
-            
+
             if isinstance(outputs, list):
                 cols = st.columns(len(outputs))
                 for i, (col, item) in enumerate(zip(cols, outputs)):
-                    col.image(item, caption=f"Image {i+1}", use_column_width=True)
+                    if isinstance(item, str) and item.startswith("http"):
+                        col.image(item, caption=f"Image {i+1}", use_container_width=True)
+                    elif isinstance(item, bytes):
+                        col.image(Image.open(io.BytesIO(item)), caption=f"Image {i+1}", use_container_width=True)
+                    else:
+                        col.warning("Unsupported image format.")
             else:
-                st.image(outputs, caption="Generated Image", use_column_width=True)
-            
-            st.success("Generation complete! Tip: Use specific descriptors like 'realistic skin texture' or 'detailed facial features' for better results.")
-            
+                if isinstance(outputs, str) and outputs.startswith("http"):
+                    st.image(outputs, caption="Generated Image", use_container_width=True)
+                elif isinstance(outputs, bytes):
+                    st.image(Image.open(io.BytesIO(outputs)), caption="Generated Image", use_container_width=True)
+                else:
+                    st.warning("Unsupported image format.")
+
+            st.success("Generation complete! Tip: Use specific descriptors like 'realistic skin texture' or 'cinematic lighting'.")
+
         except Exception as e:
             st.error(f"Image generation failed: {str(e)}")
             st.info("Common fixes: 1) Check NSFW content restrictions 2) Try different seed 3) Reduce steps/scale")
 
-# ─── Prompt Tips Section ──────────────────────────────────────────────────────
+# ─── Prompt Tips ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("""
-**Prompt Engineering Tips:**
-- Use explicit details: "perfect facial symmetry" 
-- Specify lighting: "soft cinematic lighting"
-- Add textures: "smooth skin texture"
-- Mention perspective: "full-body view from low angle"
-- Include style: "hyper-realistic photography"
+**Prompt Tips:**
+- Use details like "perfect symmetry", "soft lighting"
+- Mention style: "photorealistic", "hyper-detailed"
+- Perspective: "full-body shot, low angle"
+- Include emotion or pose
 """)
