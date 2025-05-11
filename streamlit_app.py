@@ -42,8 +42,8 @@ MODELS = {
             "height": {"type": "slider", "label": "Height", "min": 512, "max": 1024, "default": 768}
         }
     },
-    "Realistic Vision v6.0": {
-        "ref": "lucataco/realistic-vision-v60:7e30a5b8d49c9a91a8ea4c2a370a5b1b5b0a7f7b0a9f9f7a8b7a8b7a8b7a8b7a",
+    "Realistic Vision v5.1": {
+        "ref": "lucataco/realistic-vision-v5.1:2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb",
         "params": {
             "steps": {"type": "slider", "label": "Sampling Steps", "min": 20, "max": 50, "default": 35},
             "width": {"type": "slider", "label": "Width", "min": 512, "max": 1024, "default": 768},
