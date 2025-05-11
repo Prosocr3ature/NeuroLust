@@ -14,23 +14,39 @@ if "REPLICATE_API_TOKEN" not in st.secrets:
 
 replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
 
-# ─── Updated Model Configuration ──────────────────────────────────────────────
+# ─── Updated Model Configuration with Parameter Mapping ───────────────────────
 MODELS = {
     "Realism XL (Uncensored)": {
         "ref": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
-        "params": ["steps", "width", "height", "guidance_scale", "scheduler"]
+        "params": {
+            "steps": {"type": "slider", "label": "Sampling Steps", "min": 20, "max": 50, "default": 35},
+            "width": {"type": "slider", "label": "Width", "min": 512, "max": 1024, "default": 768},
+            "height": {"type": "slider", "label": "Height", "min": 512, "max": 1024, "default": 768},
+            "guidance_scale": {"type": "slider", "label": "Guidance Scale", "min": 1.0, "max": 20.0, "default": 7.0},
+            "scheduler": {"type": "select", "label": "Scheduler", "options": ["DPMSolverMultistep", "K_EULER", "DPM++"], "default": "DPMSolverMultistep"}
+        }
     },
     "ReLiberate v3 (Uncensored)": {
         "ref": "asiryan/reliberate-v3:d70438fcb9bb7adb8d6e59cf236f754be0b77625e984b8595d1af02cdf034b29",
-        "params": ["num_inference_steps", "guidance_scale", "width", "height"]
+        "params": {
+            "num_inference_steps": {"type": "slider", "label": "Sampling Steps", "min": 20, "max": 50, "default": 30},
+            "guidance_scale": {"type": "slider", "label": "Guidance Scale", "min": 1.0, "max": 20.0, "default": 7.0},
+            "width": {"type": "slider", "label": "Width", "min": 512, "max": 1024, "default": 768},
+            "height": {"type": "slider", "label": "Height", "min": 512, "max": 1024, "default": 768}
+        }
     },
-    "Realistic Vision v6.0": {  # Updated version
+    "Realistic Vision v6.0": {
         "ref": "lucataco/realistic-vision-v60:7e30a5b8d49c9a91a8ea4c2a370a5b1b5b0a7f7b0a9f9f7a8b7a8b7a8b7a8b7a",
-        "params": ["steps", "width", "height", "guidance_scale"]
+        "params": {
+            "steps": {"type": "slider", "label": "Sampling Steps", "min": 20, "max": 50, "default": 35},
+            "width": {"type": "slider", "label": "Width", "min": 512, "max": 1024, "default": 768},
+            "height": {"type": "slider", "label": "Height", "min": 512, "max": 1024, "default": 768},
+            "guidance_scale": {"type": "slider", "label": "Guidance Scale", "min": 1.0, "max": 20.0, "default": 7.0}
+        }
     }
 }
 
-# ─── Enhanced UI ─────────────────────────────────────────────────────────────
+# ─── Enhanced UI with Dynamic Parameter Handling ──────────────────────────────
 with st.sidebar:
     st.header("Model Settings")
     model_choice = st.selectbox("Choose image model:", list(MODELS.keys()))
@@ -42,20 +58,26 @@ with st.sidebar:
                                   value="deformed, blurry, bad anatomy, cartoonish, unrealistic")
     
     # Model-specific parameters
+    model_params = {}
     with st.expander("Advanced Settings"):
-        if "steps" in MODELS[model_choice]["params"]:
-            steps = st.slider("Sampling Steps", 20, 50, 35)
-        if "guidance_scale" in MODELS[model_choice]["params"]:
-            guidance_scale = st.slider("Guidance Scale", 1.0, 20.0, 7.0)
-        width = st.slider("Width", 512, 1024, 768) if "width" in MODELS[model_choice]["params"] else 768
-        height = st.slider("Height", 512, 1024, 768) if "height" in MODELS[model_choice]["params"] else 768
-        seed = st.number_input("Seed", value=13961, help="For reproducibility")
+        for param_name, config in MODELS[model_choice]["params"].items():
+            if config["type"] == "slider":
+                model_params[param_name] = st.slider(
+                    label=config["label"],
+                    min_value=config["min"],
+                    max_value=config["max"],
+                    value=config["default"]
+                )
+            elif config["type"] == "select":
+                model_params[param_name] = st.selectbox(
+                    label=config["label"],
+                    options=config["options"],
+                    index=config["options"].index(config["default"])
+                )
         
-        # Scheduler options where available
-        if "scheduler" in MODELS[model_choice]["params"]:
-            scheduler = st.selectbox("Scheduler", ["DPMSolverMultistep", "K_EULER", "DPM++"], index=0)
+        seed = st.number_input("Seed", value=13961, help="For reproducibility")
 
-# ─── Generation Logic ────────────────────────────────────────────────────────
+# ─── Generation Logic with Fixed Parameter Mapping ────────────────────────────
 if st.button("Generate"):
     if not prompt.strip():
         st.warning("Please enter a prompt.")
@@ -64,34 +86,28 @@ if st.button("Generate"):
     st.info(f"Using model: {model_choice}")
     model_config = MODELS[model_choice]
     
-    # Build input payload dynamically based on model parameters
+    # Build input payload
     input_payload = {
         "prompt": prompt.strip(),
         "negative_prompt": negative_prompt.strip(),
         "seed": seed,
-        "width": width,
-        "height": height
+        **model_params
     }
-    
-    # Add model-specific parameters
-    if "guidance_scale" in model_config["params"]:
-        input_payload["guidance_scale"] = guidance_scale
-    if "steps" in model_config["params"]:
-        input_payload["steps"] = steps
-    if "scheduler" in model_config["params"]:
-        input_payload["scheduler"] = scheduler
-    if "num_inference_steps" in model_config["params"]:
-        input_payload["num_inference_steps"] = steps  # Map steps to model-specific param
+
+    # Special parameter handling
+    if "width" in input_payload and "height" in input_payload:
+        input_payload["width"] = int(input_payload["width"])
+        input_payload["height"] = int(input_payload["height"])
 
     with st.spinner("Generating image..."):
         try:
             outputs = replicate_client.run(model_config["ref"], input=input_payload)
             
-            # Handle different output formats
             if isinstance(outputs, list):
-                for i, item in enumerate(outputs):
-                    st.image(item, caption=f"Image {i+1}", use_column_width=True)
-            else:  # Handle single output
+                cols = st.columns(len(outputs))
+                for i, (col, item) in enumerate(zip(cols, outputs)):
+                    col.image(item, caption=f"Image {i+1}", use_column_width=True)
+            else:
                 st.image(outputs, caption="Generated Image", use_column_width=True)
             
             st.success("Generation complete! Tip: Use specific descriptors like 'realistic skin texture' or 'detailed facial features' for better results.")
@@ -100,7 +116,7 @@ if st.button("Generate"):
             st.error(f"Image generation failed: {str(e)}")
             st.info("Common fixes: 1) Check NSFW content restrictions 2) Try different seed 3) Reduce steps/scale")
 
-# ─── Prompt Tips Section ─────────────────────────────────────────────────────
+# ─── Prompt Tips Section ──────────────────────────────────────────────────────
 st.sidebar.markdown("""
 **Prompt Engineering Tips:**
 - Use explicit details: "perfect facial symmetry" 
