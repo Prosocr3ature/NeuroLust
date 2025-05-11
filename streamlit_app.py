@@ -2,149 +2,139 @@ import streamlit as st
 import replicate
 import random
 
+# ─── App Config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="NeuroLust", layout="wide")
 st.title("🔥 NeuroLust: Uncensored AI Image Generator")
 
+# ─── Authentication ────────────────────────────────────────────────────────────
 if "REPLICATE_API_TOKEN" not in st.secrets:
-    st.error("Replicate API token not found in Streamlit secrets. Please add it as REPLICATE_API_TOKEN.")
+    st.error(
+        "Please add your Replicate API token to Streamlit secrets as REPLICATE_API_TOKEN."
+    )
     st.stop()
-
 replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
 
-VALID_SCHEDULERS = [
-    "DDIM", "DPMSolverMultistep", "HeunDiscrete", "KarrasDPM",
-    "K_EULER_ANCESTRAL", "K_EULER", "PNDM"
-]
-
+# ─── Model Definitions ─────────────────────────────────────────────────────────
 MODELS = {
-    "Realism XL (Uncensored)": {
-        "ref": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
-        "steps": 45,
-        "scale": 8.0,
-        "width": 768,
-        "height": 1024,
-        "scheduler": "DPMSolverMultistep",
-        "preview": "https://replicate.delivery/pbxt/JqTfP3xup0D7quhKApwciUzEKCm36DyW7zHAcJ05ev8FuqaIA/out-0.png"
-    },
-    "ReLiberate v3 (Uncensored)": {
-        "ref": "asiryan/reliberate-v3:d70438fcb9bb7adb8d6e59cf236f754be0b77625e984b8595d1af02cdf034b29",
-        "steps": 40,
-        "scale": 8.5,
-        "width": 768,
-        "height": 1024,
-        "preview": "https://replicate.delivery/pbxt/GulWHD7mSgex0E0I1cT7ZkM5UPDJRyxyHbJpZMuNVBjIZumOA/out-0.png"
-    },
-    "Realistic Vision v5.1": {
-        "ref": "lucataco/realistic-vision-v5.1:2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb",
-        "steps": 40,
-        "scale": 7.5,
-        "width": 768,
-        "height": 1024,
-        "preview": "https://replicate.delivery/pbxt/ZIGcmJ0FkZqCZUHU8G3v8g20PpLKczlA8uZB2cVVWz1EvDOQA/out-0.png"
-    }
+    "Realism XL (Uncensored)": (
+        "asiryan/realism-xl:"
+        "ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219"
+    ),
+    "ReLiberate v3 (Uncensored)": (
+        "asiryan/reliberate-v3:"
+        "d70438fcb9bb7adb8d6e59cf236f754be0b77625e984b8595d1af02cdf034b29"
+    ),
+    "Realistic Vision v5.1": (
+        "lucataco/realistic-vision-v5.1:"
+        "2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb"
+    ),
 }
-
-POSES = [
-    "standing nude", "bent over", "doggystyle", "missionary", "blowjob POV",
-    "cowgirl riding", "kneeling spread legs"
+VALID_SCHEDULERS = [
+    "DDIM",
+    "PNDM",
+    "DPMSolverMultistep",
+    "HeunDiscrete",
+    "KarrasDPM",
+    "K_EULER_ANCESTRAL",
+    "K_EULER",
 ]
 
-NSFW_LEVELS = {
-    "Vanilla": "nude, soft lighting, erotic, sensual, highly detailed",
-    "NSFW": "nude, exposed genitals, wet skin, erotic gaze, realistic pussy, spread legs",
-    "Hardcore": "hardcore porn, penetration, spread pussy, cum dripping, rough sex, open mouth, cock, blowjob"
-}
-
-PRESETS = {
-    "Princess Jasmine Nude": {
-        "prompt": "Princess Jasmine nude, seductive arabian princess, long black hair, large breasts, spread legs, wet, cum dripping, soft caramel skin, hyper-realistic, 8k, erotic pose",
-        "negative": "cartoon, blurry, bad anatomy, unrealistic, lowres, watermark"
-    },
-    "Hardcore POV Sex": {
-        "prompt": "beautiful nude woman giving blowjob POV, open mouth, tongue out, saliva dripping, deepthroat, ultra realistic, 8k, wet skin, cinematic lighting",
-        "negative": "deformed, blurry, bad hands, cartoon, unrealistic, duplicate, cropped"
-    },
-    "Full Body Glamour": {
-        "prompt": "full body nude glamour model, large breasts, arched back, natural lighting, wet skin, realistic nipples, erotic expression, 8k photo, highly detailed",
-        "negative": "lowres, low quality, jpeg artifacts, poorly drawn face"
-    }
-}
-
+# ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("Model & Preset")
-    model_choice = st.selectbox("Choose Model", list(MODELS.keys()))
-    st.image(MODELS[model_choice].get("preview", None), caption=model_choice, use_column_width=True)
+    st.header("Generation Settings")
 
-    preset_choice = st.selectbox("Choose Prompt Preset", list(PRESETS.keys()))
-    nsfw_level = st.selectbox("NSFW Level", list(NSFW_LEVELS.keys()))
-    pose = st.selectbox("Pose/Action", POSES)
-    use_random_seed = st.checkbox("Use random seed", value=True)
+    # Model selector
+    model_choice = st.selectbox("Choose model", list(MODELS.keys()))
 
-    config = MODELS[model_choice]
-    preset = PRESETS[preset_choice]
-
+    # Prompts
     prompt = st.text_area(
         "Prompt",
-        value=f"{preset['prompt']}, {pose}, {NSFW_LEVELS[nsfw_level]}",
-        height=150
+        value="Enter detailed prompt here...",
+        height=120,
     )
     negative_prompt = st.text_area(
-        "Negative Prompt",
-        value=preset["negative"],
-        height=80
+        "Negative prompt",
+        value="deformed, blurry, bad anatomy, lowres",
+        height=80,
     )
 
-    steps = st.slider("Steps", 20, 50, config.get("steps", 40))
-    scale = st.slider("Guidance Scale", 1.0, 20.0, config.get("scale", 7.5))
-    width = st.slider("Width", 512, 1024, config.get("width", 768))
-    height = st.slider("Height", 512, 1024, config.get("height", 1024))
+    # Steps & scale
+    steps = st.slider("Inference steps", min_value=10, max_value=100, value=50)
+    if steps < 30:
+        st.warning("Low step count may lead to poor quality. Consider >=30.")
+    scale = st.slider("Guidance scale", min_value=1.0, max_value=20.0, value=9.0)
+    if scale < 5.0:
+        st.info("Low guidance scale may yield creative but unsteady results.")
 
-    scheduler = None
-    if "scheduler" in config:
-        scheduler = st.selectbox(
-            "Scheduler",
-            VALID_SCHEDULERS,
-            index=VALID_SCHEDULERS.index(config["scheduler"])
-        )
+    # Resolution (must be divisible by 8)
+    width = st.selectbox("Width (px)", [512, 768, 1024], index=2)
+    height = st.selectbox("Height (px)", [512, 768, 1024], index=2)
+    width = (width // 8) * 8
+    height = (height // 8) * 8
 
-    seed = random.randint(1, 999999) if use_random_seed else st.number_input("Seed", value=1337)
+    # Scheduler
+    scheduler = st.selectbox("Scheduler", VALID_SCHEDULERS, index=VALID_SCHEDULERS.index("PNDM"))
 
+    # Seed
+    use_random_seed = st.checkbox("Use random seed", value=True)
+    seed = (
+        random.randint(1, 999_999)
+        if use_random_seed
+        else st.number_input("Seed", value=1337)
+    )
+
+# ─── Generation Handler ────────────────────────────────────────────────────────
 if st.button("Generate"):
-    st.info(f"Using {model_choice}")
+    # Validate prompt
+    if not prompt.strip():
+        st.error("Prompt cannot be empty.")
+        st.stop()
 
+    st.info(f"Generating with {model_choice}...")
+
+    # Build the API payload
     payload = {
-        "prompt": prompt,
-        "negative_prompt": negative_prompt,
-        "width": int(width // 8) * 8,
-        "height": int(height // 8) * 8,
+        "prompt": prompt.strip(),
+        "negative_prompt": negative_prompt.strip(),
+        "width": width,
+        "height": height,
         "guidance_scale": scale,
         "seed": seed,
-        "num_inference_steps" if "ReLiberate" in model_choice else "steps": steps
+        "num_inference_steps": steps,
+        "scheduler": scheduler,
     }
-    if scheduler:
-        payload["scheduler"] = scheduler
 
     try:
-        with st.spinner("Generating..."):
-            output = replicate_client.run(config["ref"], input=payload)
+        with st.spinner("Calling Replicate API…"):
+            output = replicate_client.run(
+                MODELS[model_choice],
+                input=payload,
+            )
 
-            if isinstance(output, list):
-                for item in output:
-                    if hasattr(item, "read"):
-                        st.image(item.read(), caption="Generated Image", use_container_width=True)
-                        break
-                    elif hasattr(item, "url"):
-                        st.image(item.url, caption="Generated Image", use_container_width=True)
-                        break
-                    elif isinstance(item, str) and item.startswith("http"):
-                        st.image(item, caption="Generated Image", use_container_width=True)
-                        break
-            elif isinstance(output, str) and output.startswith("http"):
-                st.image(output, caption="Generated Image", use_container_width=True)
+        # Display helper
+        def show_image(item):
+            if hasattr(item, "read"):
+                st.image(item.read(), use_column_width=True)
+            elif hasattr(item, "url"):
+                st.image(item.url, use_column_width=True)
+            elif isinstance(item, str) and item.startswith("http"):
+                st.image(item, use_column_width=True)
             else:
-                st.warning("Output format not recognized.")
-                st.write(output)
+                st.error("Unrecognized output format.")
+                st.write(item)
 
-    except Exception as e:
-        st.error(f"Generation failed: {e}")
-        st.info("Try lowering resolution, changing prompt, or selecting another model.")
+        # Handle list or single output
+        if isinstance(output, list):
+            for img in output:
+                show_image(img)
+        else:
+            show_image(output)
+
+        st.success("Generation complete!")
+
+    except replicate.exceptions.ReplicateException as err:
+        st.error(f"Model error: {err}")
+        st.info("Try changing scheduler or reducing resolution.")
+    except Exception as ex:
+        st.error(f"Unexpected error: {ex}")
+        st.info("Check your inputs and try again.")
