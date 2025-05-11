@@ -1,7 +1,5 @@
 import streamlit as st
 import replicate
-import io
-from PIL import Image
 import random
 
 # ─── Page Config ─────────────────────────────────────────────────────────────
@@ -53,7 +51,7 @@ MODELS = {
     }
 }
 
-# ─── UI Sidebar ──────────────────────────────────────────────────────────────
+# ─── Sidebar UI ───────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Model Settings")
     model_choice = st.selectbox("Choose image model:", list(MODELS.keys()))
@@ -65,20 +63,17 @@ with st.sidebar:
     with st.expander("Advanced Settings"):
         for param_name, config in MODELS[model_choice]["params"].items():
             if config["type"] == "slider":
-                value = st.slider(config["label"], config["min"], config["max"], config["default"])
+                val = st.slider(config["label"], config["min"], config["max"], config["default"])
                 if param_name in ["width", "height"]:
-                    value = int(value // 8) * 8
-                model_params[param_name] = value
+                    val = int(val // 8) * 8
+                model_params[param_name] = val
             elif config["type"] == "select":
                 model_params[param_name] = st.selectbox(config["label"], config["options"], index=config["options"].index(config["default"]))
 
         use_random_seed = st.checkbox("Use random seed", value=True)
-        if use_random_seed:
-            seed = random.randint(1, 999999)
-        else:
-            seed = st.number_input("Seed", value=13961)
+        seed = random.randint(1, 999999) if use_random_seed else st.number_input("Seed", value=13961)
 
-# ─── Image Generation ────────────────────────────────────────────────────────
+# ─── Image Generation ─────────────────────────────────────────────────────────
 if st.button("Generate"):
     if not prompt.strip():
         st.warning("Please enter a prompt.")
@@ -98,31 +93,40 @@ if st.button("Generate"):
         try:
             outputs = replicate_client.run(model_config["ref"], input=input_payload)
 
+            # Unified image URL extractor
             image_url = None
             if isinstance(outputs, list):
-                if hasattr(outputs[0], "url"):
-                    image_url = outputs[0].url
-                elif isinstance(outputs[0], str) and outputs[0].startswith("http"):
-                    image_url = outputs[0]
-            elif isinstance(outputs, dict) and "image" in outputs:
-                image_url = outputs["image"]
+                for item in outputs:
+                    if hasattr(item, "url"):
+                        image_url = item.url
+                        break
+                    elif isinstance(item, str) and item.startswith("http"):
+                        image_url = item
+                        break
+            elif isinstance(outputs, dict):
+                for v in outputs.values():
+                    if isinstance(v, str) and v.startswith("http"):
+                        image_url = v
+                        break
             elif isinstance(outputs, str) and outputs.startswith("http"):
                 image_url = outputs
 
+            # Final display
             if image_url:
                 st.image(image_url, caption="Generated Image", use_container_width=True)
-                st.success("Generation complete! Tip: Vary prompts, models, or disable seed for new results.")
+                st.success("Image generated successfully.")
             else:
-                st.error("Unsupported image format or no image returned.")
+                st.error("No valid image URL found in output.")
+                st.write("DEBUG OUTPUT:", outputs)
 
         except Exception as e:
             st.error(f"Image generation failed: {str(e)}")
-            st.info("Common fixes: 1) NSFW filters 2) Try different seed 3) Lower steps/resolution")
+            st.info("Try different prompt, seed, model, or reduce steps.")
 
 # ─── Prompt Tips ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("""
 **Prompt Tips:**
-- "8k ultra-detailed, soft lighting, wet skin"
-- "realistic full-body, arched back, submissive pose"
-- "natural shadows, sharp details, lustful gaze"
+- "8k photo, arched back, natural light, wet skin"
+- "hyperrealistic close-up, parted lips, bedroom eyes"
+- "standing pose, cinematic shadows, full-body"
 """)
