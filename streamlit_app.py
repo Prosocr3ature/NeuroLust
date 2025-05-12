@@ -38,7 +38,7 @@ IMAGE_MODELS: Dict[str, Dict] = {
         "width": 768,
         "height": 1152,
         "guidance": 7.5,
-        "steps":  thirty
+        "steps": 30
     }
 }
 
