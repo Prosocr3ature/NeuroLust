@@ -8,57 +8,32 @@ st.title("🔥 NeuroLust: Uncensored AI Image Generator")
 
 # ─── Authentication ────────────────────────────────────────────────────────────
 if "REPLICATE_API_TOKEN" not in st.secrets:
-    st.error(
-        "Please add your Replicate API token to Streamlit secrets as REPLICATE_API_TOKEN."
-    )
+    st.error("Please add your Replicate API token to Streamlit secrets as REPLICATE_API_TOKEN.")
     st.stop()
+
 replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
 
 # ─── Model Definitions ─────────────────────────────────────────────────────────
 MODELS = {
-    "Realism XL (Uncensored)": (
-        "asiryan/realism-xl:"
-        "ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219"
-    ),
-    "ReLiberate v3 (Uncensored)": (
-        "asiryan/reliberate-v3:"
-        "d70438fcb9bb7adb8d6e59cf236f754be0b77625e984b8595d1af02cdf034b29"
-    ),
-    "Realistic Vision v5.1": (
-        "lucataco/realistic-vision-v5.1:"
-        "2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb"
-    ),
+    "Realism XL (Uncensored)": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
+    "ReLiberate v3 (Uncensored)": "asiryan/reliberate-v3:d70438fcb9bb7adb8d6e59cf236f754be0b77625e984b8595d1af02cdf034b29",
+    "Realistic Vision v5.1": "lucataco/realistic-vision-v5.1:2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb",
+    "Pony Realism (NSFW)": "aisha-ai-official/realism-pony-sy-v4:942f52c5b1f04384a988fd7df8425eaf77eebf155f09d5735463a724e36b826c",
 }
+
 VALID_SCHEDULERS = [
-    "DDIM",
-    "PNDM",
-    "DPMSolverMultistep",
-    "HeunDiscrete",
-    "KarrasDPM",
-    "K_EULER_ANCESTRAL",
-    "K_EULER",
+    "DDIM", "PNDM", "DPMSolverMultistep", "HeunDiscrete",
+    "KarrasDPM", "K_EULER_ANCESTRAL", "K_EULER",
 ]
 
 # ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Generation Settings")
 
-    # Model selector
     model_choice = st.selectbox("Choose model", list(MODELS.keys()))
+    prompt = st.text_area("Prompt", value="Enter detailed prompt here...", height=120)
+    negative_prompt = st.text_area("Negative prompt", value="deformed, blurry, bad anatomy, lowres", height=80)
 
-    # Prompts
-    prompt = st.text_area(
-        "Prompt",
-        value="Enter detailed prompt here...",
-        height=120,
-    )
-    negative_prompt = st.text_area(
-        "Negative prompt",
-        value="deformed, blurry, bad anatomy, lowres",
-        height=80,
-    )
-
-    # Steps & scale
     steps = st.slider("Inference steps", min_value=10, max_value=100, value=50)
     if steps < 30:
         st.warning("Low step count may lead to poor quality. Consider >=30.")
@@ -66,33 +41,24 @@ with st.sidebar:
     if scale < 5.0:
         st.info("Low guidance scale may yield creative but unsteady results.")
 
-    # Resolution (must be divisible by 8)
     width = st.selectbox("Width (px)", [512, 768, 1024], index=2)
     height = st.selectbox("Height (px)", [512, 768, 1024], index=2)
     width = (width // 8) * 8
     height = (height // 8) * 8
 
-    # Scheduler
     scheduler = st.selectbox("Scheduler", VALID_SCHEDULERS, index=VALID_SCHEDULERS.index("PNDM"))
 
-    # Seed
     use_random_seed = st.checkbox("Use random seed", value=True)
-    seed = (
-        random.randint(1, 999_999)
-        if use_random_seed
-        else st.number_input("Seed", value=1337)
-    )
+    seed = random.randint(1, 999_999) if use_random_seed else st.number_input("Seed", value=1337)
 
 # ─── Generation Handler ────────────────────────────────────────────────────────
 if st.button("Generate"):
-    # Validate prompt
     if not prompt.strip():
         st.error("Prompt cannot be empty.")
         st.stop()
 
     st.info(f"Generating with {model_choice}...")
 
-    # Build the API payload
     payload = {
         "prompt": prompt.strip(),
         "negative_prompt": negative_prompt.strip(),
@@ -106,12 +72,8 @@ if st.button("Generate"):
 
     try:
         with st.spinner("Calling Replicate API…"):
-            output = replicate_client.run(
-                MODELS[model_choice],
-                input=payload,
-            )
+            output = replicate_client.run(MODELS[model_choice], input=payload)
 
-        # Display helper
         def show_image(item):
             if hasattr(item, "read"):
                 st.image(item.read(), use_column_width=True)
@@ -123,7 +85,6 @@ if st.button("Generate"):
                 st.error("Unrecognized output format.")
                 st.write(item)
 
-        # Handle list or single output
         if isinstance(output, list):
             for img in output:
                 show_image(img)
