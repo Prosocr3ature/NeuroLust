@@ -5,43 +5,50 @@ import streamlit as st
 from io import BytesIO
 from PIL import Image
 import replicate
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
 
-# ==================== CONSTANTS & CONFIG ====================
+# ==================== CONFIGURATION ====================
 DEFAULT_APPEARANCE = (
     "Princess Jasmine from Aladdin as a glamorous model with glistening, wet soft skin, "
     "voluptuous curves—huge round breasts, tiny waist, thick thighs, prominent ass—"
     "sheer blue fishnet stockings, no underwear, and elegant nipple piercings."
 )
 
-# Models with balanced speed/quality settings
-IMAGE_MODELS = {
+IMAGE_MODELS: Dict[str, Dict] = {
     "Unrestricted XL": {
         "id": "asiryan/unlimited-xl:1a98916be7897ab4d9fbc30d2b20d070c237674148b00d344cf03ff103eb7082",
-        "steps": 40, "guidance": 9.0
+        "steps": 40,
+        "guidance": 9.0
     },
     "Hardcore Edition": {
-        "id": "asiryan/reliberate-v3:d70438fcb9bb7adb8d6e59cf236f754be0b77625e984b8595d1af02cdf034b29",
-        "steps": 40, "guidance": 8.5
+        "id": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
+        # realism-xl only takes prompt
     },
     "Porn Diffusion": {
-        "id": "delta-lock/ponynai3:ea38949bfddea2db315b598620110edfa76ddaf6313a18e6cbc6a98f496a34e9",
-        "steps": 40, "guidance": 8.0
+        "id": "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8",
+        "extra_input": {
+            "steps": 20,
+            "refiner": True,
+            "upscale": "x2",
+            "scheduler": "Euler a beta",
+            "refiner_strength": 0.6,
+            "prompt_conjunction": True
+        }
     }
 }
 
 ACTIONS: Dict[str, str] = {
-    "Doggystyle":      "INSTRUCTION: Show Jasmine bent over on hands and knees, penis entering her from behind in deep doggystyle.",
-    "Missionary":      "INSTRUCTION: Show Jasmine lying on her back, legs spread, penis thrusting into her in missionary.",
-    "Cowgirl":         "INSTRUCTION: Show Jasmine riding on top, bouncing slowly in a cowgirl position.",
-    "Deep Throat":     "INSTRUCTION: Show Jasmine kneeling, head tilted back, taking the entire length deep into her throat.",
-    "Face Fuck":       "INSTRUCTION: Show Jasmine gripping the base of the shaft with both hands, face fucking hard.",
-    "Anal":            "INSTRUCTION: Show Jasmine on all fours, penis deep in her ass, cheeks spread wide.",
+    "Doggystyle":    "INSTRUCTION: Show Jasmine bent over on hands and knees, penis entering her from behind in deep doggystyle.",
+    "Missionary":    "INSTRUCTION: Show Jasmine lying on her back, legs spread, penis thrusting into her in missionary.",
+    "Cowgirl":       "INSTRUCTION: Show Jasmine riding on top, bouncing slowly in a cowgirl position.",
+    "Deep Throat":   "INSTRUCTION: Show Jasmine kneeling, head tilted back, taking the entire length deep into her throat.",
+    "Face Fuck":     "INSTRUCTION: Show Jasmine gripping the base of the shaft with both hands, face fucking hard.",
+    "Anal":          "INSTRUCTION: Show Jasmine on all fours, penis deep in her ass, cheeks spread wide."
 }
 
 NEGATIVE_PROMPT = (
-    "deformed, mutated, disfigured, bad anatomy, lowres, blurry, cartoonish, extra limbs, "
-    "watermark, text, oversaturated, unrealistic"
+    "deformed, mutated, disfigured, bad anatomy, lowres, blurry, cartoonish, "
+    "extra limbs, watermark, text, oversaturated, unrealistic"
 )
 
 # ==================== ENGINE ====================
@@ -52,38 +59,64 @@ class NSFWEngine:
             raise RuntimeError("REPLICATE_API_TOKEN not set in environment")
         self.client = replicate.Client(api_token=token)
 
-    def generate(self, model_key: str, action_key: str, custom: str) -> Tuple[str,str]:
+    def generate(
+        self,
+        model_key: str,
+        action_key: str,
+        custom: str
+    ) -> Tuple[str, str]:
         cfg = IMAGE_MODELS[model_key]
-        # pick action instruction (custom overrides)
+        # choose instruction
         instruction = custom.strip() if custom.strip() else ACTIONS[action_key]
-        # build final prompt
+        # build prompt
         prompt = (
-            f"{instruction}\nAPPEARANCE: {DEFAULT_APPEARANCE}\n"
+            f"{instruction}\n"
+            f"APPEARANCE: {DEFAULT_APPEARANCE}\n"
             "photorealistic, hyper-realistic lighting, sharp focus, intricate details, "
             "perfect anatomy, explicit nudity"
         )
-        payload = {
-            "prompt": prompt,
-            "num_inference_steps": cfg["steps"],
-            "guidance_scale": cfg["guidance"],
-            "negative_prompt": NEGATIVE_PROMPT,
-            "width": 768,
-            "height": 1152,
-            "safety_checker": False
-        }
-        try:
-            out = self.client.run(cfg["id"], input=payload)
-        except Exception as e:
-            return "", f"Error: {e}"
-        if isinstance(out, list) and out:
-            return self._fetch_base64(out[0]), ""
-        return "", "Unexpected output"
+        # assemble input for replicate.run
+        if "extra_input" in cfg:
+            inp = {"prompt": prompt, **cfg["extra_input"]}
+        elif "steps" in cfg and "guidance" in cfg:
+            inp = {
+                "prompt": prompt,
+                "num_inference_steps": cfg["steps"],
+                "guidance_scale": cfg["guidance"],
+                "negative_prompt": NEGATIVE_PROMPT,
+                "width": 768,
+                "height": 1152,
+                "safety_checker": False
+            }
+        else:
+            # realism-xl: only prompt
+            inp = {"prompt": prompt}
 
-    def _fetch_base64(self, url: str) -> str:
-        r = requests.get(url, timeout=20)
-        r.raise_for_status()
-        img = Image.open(BytesIO(r.content)).convert("RGB")
-        img = img.resize((1024,1536), Image.Resampling.LANCZOS)
+        try:
+            out = self.client.run(cfg["id"], input=inp)
+        except Exception as e:
+            return "", f"⚠️ Error generating image: {e}"
+
+        # process first output item
+        if isinstance(out, list) and out:
+            item = out[0]
+            # binary stream
+            if hasattr(item, "read"):
+                img_bytes = item.read()
+            # bytes object
+            elif isinstance(item, (bytes, bytearray)):
+                img_bytes = item
+            # URL string
+            else:
+                resp = requests.get(item, timeout=20)
+                resp.raise_for_status()
+                img_bytes = resp.content
+            return self._to_data_uri(img_bytes), ""
+        return "", "⚠️ Unexpected output format"
+
+    def _to_data_uri(self, img_bytes: Union[bytes, bytearray]) -> str:
+        img = Image.open(BytesIO(img_bytes)).convert("RGB")
+        img = img.resize((1024, 1536), Image.Resampling.LANCZOS)
         buf = BytesIO()
         img.save(buf, format="WEBP", quality=90)
         return "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
@@ -103,9 +136,9 @@ def main():
         else:
             st.image(img, use_container_width=True)
 
-    st.sidebar.markdown("### Example Quick Actions")
-    for k in ACTIONS:
-        st.sidebar.write(f"• **{k}**: {ACTIONS[k].replace('INSTRUCTION: ','')}")
+    st.sidebar.markdown("### Example Actions")
+    for k, v in ACTIONS.items():
+        st.sidebar.write(f"**{k}**: {v.replace('INSTRUCTION: ','')}")
 
 if __name__ == "__main__":
     main()
