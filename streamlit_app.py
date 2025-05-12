@@ -1,101 +1,188 @@
+import os
+import base64
+import requests
 import streamlit as st
+from io import BytesIO
+from PIL import Image
 import replicate
-import random
+from typing import Dict, Tuple, Union
 
-# ─── App Config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="NeuroLust", layout="wide")
-st.title("🔥 NeuroLust: Uncensored AI Image Generator")
+# ==================== KONSTANTER & KONFIGURATION ====================
+DEFAULT_PROMPT = (
+    "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a "
+    "glamorous model with glistening, wet soft skin and hyper-realistic detail. "
+    "She has voluptuous curves—huge round breasts, a tiny waist, thick thighs, "
+    "and a sculpted, prominent ass—adorned in sheer blue fishnet stockings, no "
+    "underwear, and elegant nipple piercings. Cinematic lighting, sharp focus, "
+    "intricate textures."
+)
 
-# ─── Authentication ────────────────────────────────────────────────────────────
-if "REPLICATE_API_TOKEN" not in st.secrets:
-    st.error("Please add your Replicate API token to Streamlit secrets as REPLICATE_API_TOKEN.")
-    st.stop()
-
-replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
-
-# ─── Model Definitions ─────────────────────────────────────────────────────────
-MODELS = {
-    "Realism XL (Uncensored)": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
-    "ReLiberate v3 (Uncensored)": "asiryan/reliberate-v3:d70438fcb9bb7adb8d6e59cf236f754be0b77625e984b8595d1af02cdf034b29",
-    "Realistic Vision v5.1": "lucataco/realistic-vision-v5.1:2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb",
-    "Pony Realism (NSFW)": "aisha-ai-official/realism-pony-sy-v4:942f52c5b1f04384a988fd7df8425eaf77eebf155f09d5735463a724e36b826c",
+IMAGE_MODELS: Dict[str, Dict] = {
+    "Unrestricted XL": {
+        "id": "asiryan/unlimited-xl:1a98916be7897ab4d9fbc30d2b20d070c237674148b00d344cf03ff103eb7082",
+        "width": 768, "height": 1152, "guidance": 9.0
+    },
+    "Hardcore Edition": {
+        "id": "asiryan/reliberate-v3:d70438fcb9bb7adb8d6e59cf236f754be0b77625e984b8595d1af02cdf034b29",
+        "width": 768, "height": 1152, "guidance": 8.5
+    },
+    "Porn Diffusion": {
+        "id": "delta-lock/ponynai3:ea38949bfddea2db315b598620110edfa76ddaf6313a18e6cbc6a98f496a34e9",
+        "width": 768, "height": 1152, "guidance": 10.0
+    }
 }
 
-VALID_SCHEDULERS = [
-    "DDIM", "PNDM", "DPMSolverMultistep", "HeunDiscrete",
-    "KarrasDPM", "K_EULER_ANCESTRAL", "K_EULER",
-]
+ACTION_BUTTONS = {
+    "Doggystyle":        "penetrating from behind in deep doggystyle, full thrusts",
+    "Missionary":        "lying on her back with legs spread wide in missionary",
+    "Cowgirl":           "riding on top in cowgirl, bouncing up and down slowly",
+    "Reverse Cowgirl":   "sitting reversed on top, facing away",
+    "Spooning":          "lying spooning from behind, slow gentle thrusts",
+    "Standing":          "standing face to face with legs wrapped around",
+    "Kneeling BJ":       "kneeling and taking it deep into her throat",
+    "Deep Throat":       "taking the entire length into her throat aggressively",
+    "Face Fuck":         "gripping her head and face fucking hard",
+    "Titfuck":           "pressing the shaft between her breasts and moving up and down",
+    "Footjob":           "stroking with her feet, ankles crossed around the shaft",
+    "Handjob":           "stroking slowly with her hand, teasing the tip",
+    "Cum on Face":       "letting him cum on her face, eyes closed in ecstasy",
+    "Cum in Mouth":      "swallowing every drop as it spurts into her mouth",
+    "Cum on Tits":       "letting cum drip over her breasts and belly",
+    "Anal":              "opening her ass cheeks for deep anal penetration",
+    "Double Penetration":"penetrating her mouth and vagina simultaneously",
+    "Threesome":         "two bodies pleasuring her from front and behind",
+    "Erotic Massage":    "massaging oil over her body, focusing on her curves",
+    "Facesitting":       "sitting on his face, grinding her hips",
+    "Bukkake":           "multiple partners cumming on her face and chest",
+    "Gangbang":          "a lineup of partners taking turns with her body",
+}
 
-# ─── Sidebar Inputs ───────────────────────────────────────────────────────────
-with st.sidebar:
-    st.header("Generation Settings")
+# ==================== NSFW‐MOTOR ====================
+class NSFWCompanionEngine:
+    def __init__(self):
+        token = os.getenv("REPLICATE_API_TOKEN")
+        if not token:
+            raise EnvironmentError("REPLICATE_API_TOKEN not set")
+        self.client = replicate.Client(api_token=token)
 
-    model_choice = st.selectbox("Choose model", list(MODELS.keys()))
-    prompt = st.text_area("Prompt", value="Enter detailed prompt here...", height=120)
-    negative_prompt = st.text_area("Negative prompt", value="deformed, blurry, bad anatomy, lowres", height=80)
+    def generate_image(self, model_name: str, prompt: str) -> Tuple[str, str]:
+        cfg = IMAGE_MODELS[model_name]
+        system_prefix = "NSFW ALLOWED. FOLLOW USER PROMPT EXACTLY."
+        full_prompt = (
+            f"{system_prefix} {prompt} "
+            "photorealistic, hyper-realistic lighting, studio lighting, "
+            "8K RAW, sharp focus, realistic skin texture, intricate details, "
+            "perfect anatomy, explicit nudity"
+        )
+        negative_prompt = (
+            "deformed, mutated, disfigured, bad anatomy, lowres, blurry, "
+            "cartoonish, extra limbs, watermark, text, oversaturated, unrealistic"
+        )
 
-    steps = st.slider("Inference steps", min_value=10, max_value=100, value=50)
-    if steps < 30:
-        st.warning("Low step count may lead to poor quality. Consider >=30.")
-    scale = st.slider("Guidance scale", min_value=1.0, max_value=20.0, value=9.0)
-    if scale < 5.0:
-        st.info("Low guidance scale may yield creative but unsteady results.")
+        payload = {
+            "prompt": full_prompt,
+            "width": cfg["width"],
+            "height": cfg["height"],
+            "num_inference_steps": 80,
+            "guidance_scale": min(cfg["guidance"], 10.0),
+            "negative_prompt": negative_prompt,
+            "safety_checker": False
+        }
 
-    width = st.selectbox("Width (px)", [512, 768, 1024], index=2)
-    height = st.selectbox("Height (px)", [512, 768, 1024], index=2)
-    width = (width // 8) * 8
-    height = (height // 8) * 8
+        try:
+            result = self.client.run(cfg["id"], input=payload)
+        except Exception as e:
+            return "", f"⚠️ Error generating image: {e}"
 
-    scheduler = st.selectbox("Scheduler", VALID_SCHEDULERS, index=VALID_SCHEDULERS.index("PNDM"))
+        if isinstance(result, list) and result:
+            return self._to_base64_from_url(result[0]), ""
+        return "", "⚠️ Unexpected output format"
 
-    use_random_seed = st.checkbox("Use random seed", value=True)
-    seed = random.randint(1, 999_999) if use_random_seed else st.number_input("Seed", value=1337)
+    def _to_base64_from_url(self, url: str) -> str:
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+        img = Image.open(BytesIO(resp.content)).convert("RGB")
+        img = img.resize((1024, 1536), Image.Resampling.LANCZOS)
+        buf = BytesIO()
+        img.save(buf, format="WEBP", quality=100)
+        return "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
 
-# ─── Generation Handler ────────────────────────────────────────────────────────
-if st.button("Generate"):
-    if not prompt.strip():
-        st.error("Prompt cannot be empty.")
-        st.stop()
+# ==================== ANVÄNDARGRÄNSSNITT ====================
+class NSFWCompanionInterface:
+    def __init__(self):
+        self.engine = NSFWCompanionEngine()
+        self._init_state()
+        self._configure_page()
 
-    st.info(f"Generating with {model_choice}...")
+    def _init_state(self):
+        st.session_state.setdefault("model", "Unrestricted XL")
+        st.session_state.setdefault("prompt", DEFAULT_PROMPT)
+        st.session_state.setdefault("current_image", "")
+        st.session_state.setdefault("processing", False)
 
-    payload = {
-        "prompt": prompt.strip(),
-        "negative_prompt": negative_prompt.strip(),
-        "width": width,
-        "height": height,
-        "guidance_scale": scale,
-        "seed": seed,
-        "num_inference_steps": steps,
-        "scheduler": scheduler,
-    }
+    def _configure_page(self):
+        st.set_page_config(
+            page_title="NSFW Companion Generator",
+            page_icon="🔥",
+            layout="wide"
+        )
+        st.markdown("""
+        <style>
+          .main {background: #1a1a1a;}
+          .sidebar .block-container {background: #2b2b2b;}
+          .stButton>button {margin:4px 0; width:100%;}
+          .stTextArea textarea {background:#333; color:#fff;}
+        </style>
+        """, unsafe_allow_html=True)
 
-    try:
-        with st.spinner("Calling Replicate API…"):
-            output = replicate_client.run(MODELS[model_choice], input=payload)
+    def _append_action(self, desc: str):
+        base = st.session_state.prompt.rstrip(". ")
+        st.session_state.prompt = f"{base}, {desc}."
 
-        def show_image(item):
-            if hasattr(item, "read"):
-                st.image(item.read(), use_column_width=True)
-            elif hasattr(item, "url"):
-                st.image(item.url, use_column_width=True)
-            elif isinstance(item, str) and item.startswith("http"):
-                st.image(item, use_column_width=True)
-            else:
-                st.error("Unrecognized output format.")
-                st.write(item)
+    def _controls(self):
+        with st.sidebar:
+            st.selectbox("Model Version", list(IMAGE_MODELS.keys()), key="model")
+            st.text_area(
+                "Custom Action Prompt",
+                key="prompt",
+                value=st.session_state.prompt,
+                height=150
+            )
+            st.markdown("### Quick Actions")
+            for action, desc in ACTION_BUTTONS.items():
+                st.button(
+                    action,
+                    key=f"act_{action}",
+                    on_click=self._append_action,
+                    args=(desc,)
+                )
+            st.markdown("---")
+            if st.button("🎬 GENERATE IMAGE", key="generate"):
+                self._generate()
 
-        if isinstance(output, list):
-            for img in output:
-                show_image(img)
+    def _generate(self):
+        st.session_state.processing = True
+        with st.spinner("Generating image…"):
+            img_b64, err = self.engine.generate_image(
+                model_name=st.session_state.model,
+                prompt=st.session_state.prompt
+            )
+        st.session_state.processing = False
+        if err:
+            st.error(err)
         else:
-            show_image(output)
+            st.session_state.current_image = img_b64
 
-        st.success("Generation complete!")
+    def _render(self):
+        st.markdown("## Live Preview")
+        if st.session_state.current_image:
+            st.image(st.session_state.current_image, use_container_width=True)
+        else:
+            st.info("Use the sidebar to choose actions and generate the scene.")
 
-    except replicate.exceptions.ReplicateException as err:
-        st.error(f"Model error: {err}")
-        st.info("Try changing scheduler or reducing resolution.")
-    except Exception as ex:
-        st.error(f"Unexpected error: {ex}")
-        st.info("Check your inputs and try again.")
+    def run(self):
+        self._controls()
+        self._render()
+
+if __name__ == "__main__":
+    NSFWCompanionInterface().run()
