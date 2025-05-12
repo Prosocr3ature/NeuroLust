@@ -19,11 +19,16 @@ IMAGE_MODELS: Dict[str, Dict] = {
     "Unrestricted XL": {
         "id": "asiryan/unlimited-xl:1a98916be7897ab4d9fbc30d2b20d070c237674148b00d344cf03ff103eb7082",
         "steps": 40,
-        "guidance": 9.0
+        "guidance": 9.0,
+        "width": 768,
+        "height": 1152
     },
     "Realistic Vision v5.1": {
         "id": "lucataco/realistic-vision-v5.1:2c8e954decbf70b7607a4414e5785ef9e4de4b8c51d50fb8b8b349160e0ef6bb",
-        # realism-v5.1 only needs the prompt; default resolution/steps on server
+        "steps": 40,
+        "guidance": 7.5,
+        "width": 768,
+        "height": 1152
     },
     "Porn Diffusion": {
         "id": "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8",
@@ -57,12 +62,12 @@ class NSFWEngine:
     def __init__(self):
         token = os.getenv("REPLICATE_API_TOKEN")
         if not token:
-            raise RuntimeError("REPLICATE_API_TOKEN not set in environment")
+            raise RuntimeError("REPLICATE_API_TOKEN not set")
         self.client = replicate.Client(api_token=token)
 
     def generate(self, model_key: str, action_key: str, custom: str) -> Tuple[str, str]:
         cfg = IMAGE_MODELS[model_key]
-        instruction = custom.strip() if custom.strip() else ACTIONS[action_key]
+        instruction = custom.strip() or ACTIONS[action_key]
         prompt = (
             f"{instruction}\n"
             f"APPEARANCE: {DEFAULT_APPEARANCE}\n"
@@ -70,39 +75,36 @@ class NSFWEngine:
             "perfect anatomy, explicit nudity"
         )
 
-        # assemble input dict
+        # Build input dict
         if "extra_input" in cfg:
             inp = {"prompt": prompt, **cfg["extra_input"]}
-        elif "steps" in cfg and "guidance" in cfg:
+        else:
             inp = {
                 "prompt": prompt,
                 "num_inference_steps": cfg["steps"],
                 "guidance_scale": cfg["guidance"],
                 "negative_prompt": NEGATIVE_PROMPT,
-                "width": 768,
-                "height": 1152,
+                "width": cfg["width"],
+                "height": cfg["height"],
                 "safety_checker": False
             }
-        else:
-            # models like realistic-vision only need prompt
-            inp = {"prompt": prompt}
 
-        # retry on transient 502 errors
-        last_error = None
-        for attempt in range(3):
+        # Retry on transient 502
+        last_err = None
+        for i in range(3):
             try:
                 output = self.client.run(cfg["id"], input=inp)
                 break
             except Exception as e:
-                last_error = e
-                if "502" in str(e) and attempt < 2:
+                last_err = e
+                if "502" in str(e) and i < 2:
                     time.sleep(1)
                     continue
                 return "", f"⚠️ Generation error: {e}"
         else:
-            return "", f"⚠️ Generation failed after 3 attempts: {last_error}"
+            return "", f"⚠️ Failed after 3 attempts: {last_err}"
 
-        # process output
+        # Process output
         if isinstance(output, list) and output:
             item = output[0]
             if hasattr(item, "read"):
@@ -132,6 +134,12 @@ def main():
     action = st.sidebar.selectbox("Action", list(ACTIONS.keys()))
     custom = st.sidebar.text_area("Custom Instruction (overrides action)", height=100)
 
+    # Show prompt preview for debugging
+    st.sidebar.markdown("### Prompt Preview")
+    preview = custom.strip() or ACTIONS[action]
+    preview = f"{preview}\nAPPEARANCE: {DEFAULT_APPEARANCE}"
+    st.sidebar.code(preview, language="text")
+
     if st.sidebar.button("Generate"):
         with st.spinner("Generating…"):
             img, err = NSFWEngine().generate(model, action, custom)
@@ -146,4 +154,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
