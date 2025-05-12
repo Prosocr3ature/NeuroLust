@@ -8,6 +8,7 @@ import replicate
 from typing import Dict, Tuple, Union
 
 # ==================== KONSTANTER & KONFIGURATION ====================
+
 DEFAULT_PROMPT = (
     "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a "
     "glamorous model with glistening, wet soft skin and hyper-realistic detail. "
@@ -20,15 +21,24 @@ DEFAULT_PROMPT = (
 IMAGE_MODELS: Dict[str, Dict] = {
     "Unrestricted XL": {
         "id": "asiryan/unlimited-xl:1a98916be7897ab4d9fbc30d2b20d070c237674148b00d344cf03ff103eb7082",
-        "width": 768, "height": 1152, "guidance": 9.0
+        "width": 768,
+        "height": 1152,
+        "guidance": 9.0,
+        "steps": 50
     },
     "Hardcore Edition": {
         "id": "asiryan/reliberate-v3:d70438fcb9bb7adb8d6e59cf236f754be0b77625e984b8595d1af02cdf034b29",
-        "width": 768, "height": 1152, "guidance": 8.5
+        "width": 768,
+        "height": 1152,
+        "guidance": 8.5,
+        "steps": 45
     },
     "Porn Diffusion": {
         "id": "delta-lock/ponynai3:ea38949bfddea2db315b598620110edfa76ddaf6313a18e6cbc6a98f496a34e9",
-        "width": 768, "height": 1152, "guidance": 10.0
+        "width": 768,
+        "height": 1152,
+        "guidance": 7.5,
+        "steps":  thirty
     }
 }
 
@@ -65,12 +75,7 @@ class NSFWCompanionEngine:
             raise EnvironmentError("REPLICATE_API_TOKEN not set")
         self.client = replicate.Client(api_token=token)
 
-    def generate_image(
-        self,
-        model_name: str,
-        prompt: str,
-        steps: int
-    ) -> Tuple[str, str]:
+    def generate_image(self, model_name: str, prompt: str) -> Tuple[str, str]:
         cfg = IMAGE_MODELS[model_name]
         system_prefix = "NSFW ALLOWED. FOLLOW USER PROMPT EXACTLY."
         full_prompt = (
@@ -88,8 +93,8 @@ class NSFWCompanionEngine:
             "prompt": full_prompt,
             "width": cfg["width"],
             "height": cfg["height"],
-            "num_inference_steps": steps,
-            "guidance_scale": min(cfg["guidance"], 10.0),
+            "num_inference_steps": cfg["steps"],
+            "guidance_scale": cfg["guidance"],
             "negative_prompt": negative_prompt,
             "safety_checker": False
         }
@@ -122,7 +127,6 @@ class NSFWCompanionInterface:
     def _init_state(self):
         st.session_state.setdefault("model", "Unrestricted XL")
         st.session_state.setdefault("prompt", DEFAULT_PROMPT)
-        st.session_state.setdefault("steps", 40)
         st.session_state.setdefault("current_image", "")
         st.session_state.setdefault("processing", False)
 
@@ -154,14 +158,6 @@ class NSFWCompanionInterface:
                 value=st.session_state.prompt,
                 height=150
             )
-            # NEW: inference steps slider
-            st.slider(
-                "Inference Steps (speed vs quality)",
-                min_value=10,
-                max_value=80,
-                step=5,
-                key="steps"
-            )
             st.markdown("### Quick Actions")
             for action, desc in ACTION_BUTTONS.items():
                 st.button(
@@ -179,8 +175,7 @@ class NSFWCompanionInterface:
         with st.spinner("Generating image…"):
             img_b64, err = self.engine.generate_image(
                 model_name=st.session_state.model,
-                prompt=st.session_state.prompt,
-                steps=st.session_state.steps
+                prompt=st.session_state.prompt
             )
         st.session_state.processing = False
         if err:
