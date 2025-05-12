@@ -1,4 +1,5 @@
 import os
+import time
 import base64
 import requests
 import streamlit as st
@@ -7,7 +8,7 @@ from PIL import Image
 import replicate
 from typing import Dict, Tuple, Union
 
-# ==================== CONFIGURATION ====================
+# ==================== CONSTANTS & CONFIG ====================
 DEFAULT_APPEARANCE = (
     "Princess Jasmine from Aladdin as a glamorous model with glistening, wet soft skin, "
     "voluptuous curves—huge round breasts, tiny waist, thick thighs, prominent ass—"
@@ -17,12 +18,10 @@ DEFAULT_APPEARANCE = (
 IMAGE_MODELS: Dict[str, Dict] = {
     "Unrestricted XL": {
         "id": "asiryan/unlimited-xl:1a98916be7897ab4d9fbc30d2b20d070c237674148b00d344cf03ff103eb7082",
-        "steps": 40,
-        "guidance": 9.0
+        "steps": 40, "guidance": 9.0
     },
     "Hardcore Edition": {
-        "id": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
-        # realism-xl only takes prompt
+        "id": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219"
     },
     "Porn Diffusion": {
         "id": "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8",
@@ -59,23 +58,17 @@ class NSFWEngine:
             raise RuntimeError("REPLICATE_API_TOKEN not set in environment")
         self.client = replicate.Client(api_token=token)
 
-    def generate(
-        self,
-        model_key: str,
-        action_key: str,
-        custom: str
-    ) -> Tuple[str, str]:
+    def generate(self, model_key: str, action_key: str, custom: str) -> Tuple[str, str]:
         cfg = IMAGE_MODELS[model_key]
-        # choose instruction
         instruction = custom.strip() if custom.strip() else ACTIONS[action_key]
-        # build prompt
         prompt = (
             f"{instruction}\n"
             f"APPEARANCE: {DEFAULT_APPEARANCE}\n"
             "photorealistic, hyper-realistic lighting, sharp focus, intricate details, "
             "perfect anatomy, explicit nudity"
         )
-        # assemble input for replicate.run
+
+        # Build input dict
         if "extra_input" in cfg:
             inp = {"prompt": prompt, **cfg["extra_input"]}
         elif "steps" in cfg and "guidance" in cfg:
@@ -89,24 +82,35 @@ class NSFWEngine:
                 "safety_checker": False
             }
         else:
-            # realism-xl: only prompt
+            # realism-xl only needs prompt
             inp = {"prompt": prompt}
 
-        try:
-            out = self.client.run(cfg["id"], input=inp)
-        except Exception as e:
-            return "", f"⚠️ Error generating image: {e}"
+        # Retry logic for 502
+        last_error = None
+        for attempt in range(3):
+            try:
+                output = self.client.run(cfg["id"], input=inp)
+                break
+            except Exception as e:
+                last_error = e
+                msg = str(e)
+                # if it's a 502, retry after a pause
+                if "502" in msg and attempt < 2:
+                    time.sleep(1)
+                    continue
+                else:
+                    return "", f"⚠️ Generation error: {e}"
+        else:
+            return "", f"⚠️ Generation failed after 3 attempts: {last_error}"
 
-        # process first output item
-        if isinstance(out, list) and out:
-            item = out[0]
-            # binary stream
+        # Process output
+        if isinstance(output, list) and output:
+            item = output[0]
+            # binary
             if hasattr(item, "read"):
                 img_bytes = item.read()
-            # bytes object
             elif isinstance(item, (bytes, bytearray)):
                 img_bytes = item
-            # URL string
             else:
                 resp = requests.get(item, timeout=20)
                 resp.raise_for_status()
