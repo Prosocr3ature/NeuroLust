@@ -65,7 +65,12 @@ class NSFWCompanionEngine:
             raise EnvironmentError("REPLICATE_API_TOKEN not set")
         self.client = replicate.Client(api_token=token)
 
-    def generate_image(self, model_name: str, prompt: str) -> Tuple[str, str]:
+    def generate_image(
+        self,
+        model_name: str,
+        prompt: str,
+        steps: int
+    ) -> Tuple[str, str]:
         cfg = IMAGE_MODELS[model_name]
         system_prefix = "NSFW ALLOWED. FOLLOW USER PROMPT EXACTLY."
         full_prompt = (
@@ -83,7 +88,7 @@ class NSFWCompanionEngine:
             "prompt": full_prompt,
             "width": cfg["width"],
             "height": cfg["height"],
-            "num_inference_steps": 80,
+            "num_inference_steps": steps,
             "guidance_scale": min(cfg["guidance"], 10.0),
             "negative_prompt": negative_prompt,
             "safety_checker": False
@@ -117,6 +122,7 @@ class NSFWCompanionInterface:
     def _init_state(self):
         st.session_state.setdefault("model", "Unrestricted XL")
         st.session_state.setdefault("prompt", DEFAULT_PROMPT)
+        st.session_state.setdefault("steps", 40)
         st.session_state.setdefault("current_image", "")
         st.session_state.setdefault("processing", False)
 
@@ -148,6 +154,14 @@ class NSFWCompanionInterface:
                 value=st.session_state.prompt,
                 height=150
             )
+            # NEW: inference steps slider
+            st.slider(
+                "Inference Steps (speed vs quality)",
+                min_value=10,
+                max_value=80,
+                step=5,
+                key="steps"
+            )
             st.markdown("### Quick Actions")
             for action, desc in ACTION_BUTTONS.items():
                 st.button(
@@ -165,7 +179,8 @@ class NSFWCompanionInterface:
         with st.spinner("Generating image…"):
             img_b64, err = self.engine.generate_image(
                 model_name=st.session_state.model,
-                prompt=st.session_state.prompt
+                prompt=st.session_state.prompt,
+                steps=st.session_state.steps
             )
         st.session_state.processing = False
         if err:
