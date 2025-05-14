@@ -8,28 +8,29 @@ st.title("🔥 NeuroLust: Uncensored AI Image Generator")
 
 # ─── Authentication ────────────────────────────────────────────────────────────
 if "REPLICATE_API_TOKEN" not in st.secrets:
-    st.error("Replicate API token not found in Streamlit secrets. Please add it as REPLICATE_API_TOKEN.")
+    st.error("Please add your Replicate API token to Streamlit secrets as REPLICATE_API_TOKEN.")
     st.stop()
-
 replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
 
-# ==================== MODEL DEFINITIONS ====================
+# ─── Constants & Models ────────────────────────────────────────────────────────
 VALID_SCHEDULERS = [
-    "DDIM", "DPMSolverMultistep", "HeunDiscrete", "KarrasDPM",
-    "K_EULER_ANCESTRAL", "K_EULER", "PNDM"
+    "DDIM", "PNDM", "DPMSolverMultistep", "HeunDiscrete",
+    "KarrasDPM", "K_EULER_ANCESTRAL", "K_EULER",
 ]
 
-# Default description of Jasmine
-DEFAULT_APPEARANCE = (
-    "Princess Jasmine from Aladdin as a glamorous model with glistening, wet soft skin, "
-    "voluptuous curves—huge round breasts, tiny waist, thick thighs, prominent ass—"
-    "sheer blue fishnet stockings, no underwear, and elegant nipple piercings."
+# Improved default Jasmine prompt
+DEFAULT_PROMPT = (
+    "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model "
+    "with glistening, wet soft skin and hyper-realistic detail. She has voluptuous curves—huge "
+    "round breasts, a tiny waist, thick thighs, and a sculpted, prominent ass—adorned in sheer "
+    "blue fishnet stockings, no underwear, and elegant nipple piercings. Cinematic studio lighting, "
+    "sharp focus, intricate textures, explicit nudity."
 )
 
-MODELS = {
+IMAGE_MODELS = {
     "Realism XL (Uncensored)": {
         "ref": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
-        "steps": 45, "scale": 8.0, "width": 768, "height": 1024,
+        "steps": 45, "scale": 8.0, "width": 768, "height": 1152,
         "scheduler": "DPMSolverMultistep",
         "preview": "https://replicate.delivery/pbxt/JqTfP3xup0D7quhKApwciUzEKCm36DyW7zHAcJ05ev8FuqaIA/out-0.png"
     },
@@ -51,53 +52,57 @@ MODELS = {
     }
 }
 
-# ==================== SIDEBAR SETTINGS ====================
+# ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Generation Settings")
 
     # Model selector
-    model_choice = st.selectbox("Choose Model", list(MODELS.keys()))
-    config = MODELS[model_choice]
+    model_choice = st.selectbox("Model", list(IMAGE_MODELS.keys()))
+    cfg = IMAGE_MODELS[model_choice]
 
-    # optional preview
-    if config.get("preview"):
-        st.image(config["preview"], caption=model_choice, use_column_width=True)
+    # Optional preview image
+    if cfg.get("preview"):
+        st.image(cfg["preview"], caption=model_choice, use_container_width=True)
 
-    # Prompt settings
-    prompt = st.text_area("Prompt", value="Enter detailed prompt here...", height=120)
-    negative_prompt = st.text_area("Negative prompt", value="deformed, blurry, bad anatomy, lowres", height=80)
+    # Prompt (user writes any explicit scene/actions)
+    prompt = st.text_area(
+        "Prompt (include any actions, scenery, level of explicitness)",
+        value=DEFAULT_PROMPT,
+        height=200
+    )
+    negative_prompt = st.text_area(
+        "Negative Prompt",
+        value="deformed, mutated, disfigured, bad anatomy, lowres, blurry, watermark",
+        height=80
+    )
 
     # Steps & Scale
-    steps = st.slider("Inference steps", 10, 100, value=config.get("steps", 40))
+    steps = st.slider("Inference Steps", 10, 100, value=cfg.get("steps", 40), step=5)
     if steps < 30:
-        st.warning("Low step count may lead to poor quality. ≥30 recommended.")
-
-    scale = st.slider("Guidance scale", 1.0, 20.0, value=config.get("scale", 7.5))
+        st.warning("Low step count may reduce quality (≥30 recommended).")
+    scale = st.slider("Guidance Scale", 1.0, 20.0, value=cfg.get("scale", 7.5), step=0.5)
     if scale < 5.0:
-        st.info("Low guidance scale yields creative but less stable output.")
+        st.info("Low guidance scale yields more creative but less consistent output.")
 
-    # Resolution (must be divisible by 8)
-    width = st.selectbox("Width (px)", [512, 768, 1024], index=[512, 768, 1024].index(config.get("width", 768)))
-    height = st.selectbox("Height (px)", [512, 768, 1024], index=[512, 768, 1024].index(config.get("height", 1024)))
-    width = (width // 8) * 8
-    height = (height // 8) * 8
+    # Resolution
+    width = st.slider("Width (px)", 256, 1536, value=cfg.get("width", 768), step=8)
+    height = st.slider("Height (px)", 256, 1536, value=cfg.get("height", 1152), step=8)
 
     # Scheduler
-    scheduler = st.selectbox("Scheduler", VALID_SCHEDULERS, index=VALID_SCHEDULERS.index(config.get("scheduler", "PNDM")))
+    scheduler = st.selectbox("Scheduler", VALID_SCHEDULERS, index=VALID_SCHEDULERS.index(cfg.get("scheduler", "PNDM")))
 
     # Seed
-    use_random_seed = st.checkbox("Use random seed", value=True)
-    seed = random.randint(1, 999_999) if use_random_seed else st.number_input("Seed", value=1337)
+    use_random = st.checkbox("Use random seed", value=True)
+    seed = random.randint(1, 999_999) if use_random else st.number_input("Seed", value=1337)
 
-# ==================== GENERATION HANDLER ====================
+# ─── Generation Handler ────────────────────────────────────────────────────────
 if st.button("Generate"):
     if not prompt.strip():
         st.error("Prompt cannot be empty.")
         st.stop()
+    st.info(f"Generating with {model_choice}…")
 
-    st.info(f"Generating with {model_choice}...")
-
-    # Build the API payload
+    # Build payload
     payload = {
         "prompt": prompt.strip(),
         "negative_prompt": negative_prompt.strip(),
@@ -108,15 +113,14 @@ if st.button("Generate"):
         "num_inference_steps": steps,
         "scheduler": scheduler,
     }
-
-    # Merge extra_input (for Flux Uncensored)
-    payload.update(config.get("extra_input", {}))
+    # Merge extra_input for Flux Uncensored
+    payload.update(cfg.get("extra_input", {}))
 
     try:
         with st.spinner("Calling Replicate API…"):
-            output = replicate_client.run(config["ref"], input=payload)
+            output = replicate_client.run(cfg["ref"], input=payload)
 
-        # Display helper
+        # Display results
         def show_image(item):
             if hasattr(item, "read"):
                 st.image(item.read(), use_container_width=True)
