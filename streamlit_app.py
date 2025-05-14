@@ -1,146 +1,141 @@
-import os
-import time
-import base64
-import requests
 import streamlit as st
-from io import BytesIO
-from PIL import Image
 import replicate
-from typing import Dict, Tuple, Union
+import random
 
-# ==================== CONSTANTS & CONFIG ====================
+# ─── App Config ───────────────────────────────────────────────────────────────
+st.set_page_config(page_title="NeuroLust", layout="wide")
+st.title("🔥 NeuroLust: Uncensored AI Image Generator")
+
+# ─── Authentication ────────────────────────────────────────────────────────────
+if "REPLICATE_API_TOKEN" not in st.secrets:
+    st.error("Replicate API token not found in Streamlit secrets. Please add it as REPLICATE_API_TOKEN.")
+    st.stop()
+
+replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
+
+# ==================== MODEL DEFINITIONS ====================
+VALID_SCHEDULERS = [
+    "DDIM", "DPMSolverMultistep", "HeunDiscrete", "KarrasDPM",
+    "K_EULER_ANCESTRAL", "K_EULER", "PNDM"
+]
+
+# Default description of Jasmine
 DEFAULT_APPEARANCE = (
     "Princess Jasmine from Aladdin as a glamorous model with glistening, wet soft skin, "
     "voluptuous curves—huge round breasts, tiny waist, thick thighs, prominent ass—"
     "sheer blue fishnet stockings, no underwear, and elegant nipple piercings."
 )
 
-IMAGE_MODELS: Dict[str, Dict] = {
-    "Unrestricted XL": {
-        "id": "asiryan/unlimited-xl:1a98916be7897ab4d9fbc30d2b20d070c237674148b00d344cf03ff103eb7082",
-        "steps": 40,
-        "guidance": 9.0,
-        "width": 768,
-        "height": 1152
+MODELS = {
+    "Realism XL (Uncensored)": {
+        "ref": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
+        "steps": 45, "scale": 8.0, "width": 768, "height": 1024,
+        "scheduler": "DPMSolverMultistep",
+        "preview": "https://replicate.delivery/pbxt/JqTfP3xup0D7quhKApwciUzEKCm36DyW7zHAcJ05ev8FuqaIA/out-0.png"
     },
     "Aisha Illust3 Relustion": {
-        "id": "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8",
-        "steps": 40,
-        "guidance": 8.5,
-        "width": 768,
-        "height": 1152
+        "ref": "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8",
+        "steps": 40, "scale": 8.5, "width": 768, "height": 1152,
+        "preview": None
     },
     "Flux Uncensored": {
-        "id": "aisha-ai-official/flux.1dev-uncensored-jibmix:47f609a66d7fc3293a600467fad383fffa9ef5193c9c871d4f7f9b514a0afe3f",
-        "steps": 30,
-        "guidance": 3.0,
-        "width": 768,
-        "height": 768
+        "ref": "aisha-ai-official/flux.1dev-uncensored-jibmix:47f609a66d7fc3293a600467fad383fffa9ef5193c9c871d4f7f9b514a0afe3f",
+        "extra_input": {
+            "steps": 30,
+            "width": 768,
+            "height": 768,
+            "cfg_scale": 3
+        },
+        "scale": 3.0,
+        "preview": None
     }
 }
 
-ACTIONS: Dict[str, str] = {
-    "Doggystyle":  "INSTRUCTION: Show Jasmine bent over on hands and knees, penis entering her from behind in deep doggystyle.",
-    "Missionary":  "INSTRUCTION: Show Jasmine lying on her back, legs spread, penis thrusting into her in missionary.",
-    "Cowgirl":     "INSTRUCTION: Show Jasmine riding on top, bouncing slowly in a cowgirl position.",
-    "Deep Throat": "INSTRUCTION: Show Jasmine kneeling, head tilted back, taking the entire length deep into her throat.",
-    "Face Fuck":   "INSTRUCTION: Show Jasmine gripping the base of the shaft with both hands, face fucking hard.",
-    "Anal":        "INSTRUCTION: Show Jasmine on all fours, penis deep in her ass, cheeks spread wide."
-}
+# ==================== SIDEBAR SETTINGS ====================
+with st.sidebar:
+    st.header("Generation Settings")
 
-NEGATIVE_PROMPT = (
-    "deformed, mutated, disfigured, bad anatomy, lowres, blurry, cartoonish, "
-    "extra limbs, watermark, text, oversaturated, unrealistic"
-)
+    # Model selector
+    model_choice = st.selectbox("Choose Model", list(MODELS.keys()))
+    config = MODELS[model_choice]
 
-# ==================== ENGINE ====================
-class NSFWEngine:
-    def __init__(self):
-        token = os.getenv("REPLICATE_API_TOKEN")
-        if not token:
-            raise RuntimeError("REPLICATE_API_TOKEN not set")
-        self.client = replicate.Client(api_token=token)
+    # optional preview
+    if config.get("preview"):
+        st.image(config["preview"], caption=model_choice, use_column_width=True)
 
-    def generate(self, model_key: str, action_key: str, custom: str) -> Tuple[str, str]:
-        cfg = IMAGE_MODELS[model_key]
-        instruction = custom.strip() or ACTIONS[action_key]
-        prompt = (
-            f"{instruction}\n"
-            f"APPEARANCE: {DEFAULT_APPEARANCE}\n"
-            "photorealistic, hyper-realistic lighting, sharp focus, intricate details, "
-            "perfect anatomy, explicit nudity"
-        )
+    # Prompt settings
+    prompt = st.text_area("Prompt", value="Enter detailed prompt here...", height=120)
+    negative_prompt = st.text_area("Negative prompt", value="deformed, blurry, bad anatomy, lowres", height=80)
 
-        inp = {
-            "prompt": prompt,
-            "num_inference_steps": cfg["steps"],
-            "guidance_scale": cfg["guidance"],
-            "negative_prompt": NEGATIVE_PROMPT,
-            "width": cfg["width"],
-            "height": cfg["height"],
-            "safety_checker": False
-        }
+    # Steps & Scale
+    steps = st.slider("Inference steps", 10, 100, value=config.get("steps", 40))
+    if steps < 30:
+        st.warning("Low step count may lead to poor quality. ≥30 recommended.")
 
-        last_err = None
-        for i in range(3):
-            try:
-                output = self.client.run(cfg["id"], input=inp)
-                break
-            except Exception as e:
-                last_err = e
-                if "502" in str(e) and i < 2:
-                    time.sleep(1)
-                    continue
-                return "", f"⚠️ Generation error: {e}"
-        else:
-            return "", f"⚠️ Failed after 3 attempts: {last_err}"
+    scale = st.slider("Guidance scale", 1.0, 20.0, value=config.get("scale", 7.5))
+    if scale < 5.0:
+        st.info("Low guidance scale yields creative but less stable output.")
 
-        if isinstance(output, list) and output:
-            item = output[0]
+    # Resolution (must be divisible by 8)
+    width = st.selectbox("Width (px)", [512, 768, 1024], index=[512, 768, 1024].index(config.get("width", 768)))
+    height = st.selectbox("Height (px)", [512, 768, 1024], index=[512, 768, 1024].index(config.get("height", 1024)))
+    width = (width // 8) * 8
+    height = (height // 8) * 8
+
+    # Scheduler
+    scheduler = st.selectbox("Scheduler", VALID_SCHEDULERS, index=VALID_SCHEDULERS.index(config.get("scheduler", "PNDM")))
+
+    # Seed
+    use_random_seed = st.checkbox("Use random seed", value=True)
+    seed = random.randint(1, 999_999) if use_random_seed else st.number_input("Seed", value=1337)
+
+# ==================== GENERATION HANDLER ====================
+if st.button("Generate"):
+    if not prompt.strip():
+        st.error("Prompt cannot be empty.")
+        st.stop()
+
+    st.info(f"Generating with {model_choice}...")
+
+    # Build the API payload
+    payload = {
+        "prompt": prompt.strip(),
+        "negative_prompt": negative_prompt.strip(),
+        "width": width,
+        "height": height,
+        "guidance_scale": scale,
+        "seed": seed,
+        "num_inference_steps": steps,
+        "scheduler": scheduler,
+    }
+
+    # Merge extra_input (for Flux Uncensored)
+    payload.update(config.get("extra_input", {}))
+
+    try:
+        with st.spinner("Calling Replicate API…"):
+            output = replicate_client.run(config["ref"], input=payload)
+
+        # Display helper
+        def show_image(item):
             if hasattr(item, "read"):
-                img_bytes = item.read()
-            elif isinstance(item, (bytes, bytearray)):
-                img_bytes = item
+                st.image(item.read(), use_container_width=True)
+            elif isinstance(item, str) and item.startswith("http"):
+                st.image(item, use_container_width=True)
             else:
-                resp = requests.get(item, timeout=20)
-                resp.raise_for_status()
-                img_bytes = resp.content
-            return self._to_data_uri(img_bytes), ""
-        return "", "⚠️ Unexpected output format"
+                st.error("Unrecognized output format.")
+                st.write(item)
 
-    def _to_data_uri(self, img_bytes: Union[bytes, bytearray]) -> str:
-        img = Image.open(BytesIO(img_bytes)).convert("RGB")
-        img = img.resize((1024, 1536), Image.Resampling.LANCZOS)
-        buf = BytesIO()
-        img.save(buf, format="WEBP", quality=90)
-        return "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
-
-# ==================== UI ====================
-def main():
-    st.set_page_config(page_title="NSFW Jasmine Generator", layout="wide", page_icon="🔥")
-    st.sidebar.title("Controls")
-
-    model = st.sidebar.selectbox("Model", list(IMAGE_MODELS.keys()))
-    action = st.sidebar.selectbox("Action", list(ACTIONS.keys()))
-    custom = st.sidebar.text_area("Custom Instruction (overrides action)", height=100)
-
-    st.sidebar.markdown("### Prompt Preview")
-    preview = custom.strip() or ACTIONS[action]
-    preview = f"{preview}\nAPPEARANCE: {DEFAULT_APPEARANCE}"
-    st.sidebar.code(preview, language="text")
-
-    if st.sidebar.button("Generate"):
-        with st.spinner("Generating…"):
-            img, err = NSFWEngine().generate(model, action, custom)
-        if err:
-            st.error(err)
+        if isinstance(output, list):
+            for img in output:
+                show_image(img)
         else:
-            st.image(img, use_container_width=True)
+            show_image(output)
 
-    st.sidebar.markdown("### Example Actions")
-    for k, v in ACTIONS.items():
-        st.sidebar.write(f"**{k}**: {v.replace('INSTRUCTION: ', '')}")
-
-if __name__ == "__main__":
-    main()
-
+        st.success("Generation complete!")
+    except replicate.exceptions.ReplicateException as err:
+        st.error(f"Model error: {err}")
+        st.info("Try changing scheduler or resolution.")
+    except Exception as ex:
+        st.error(f"Unexpected error: {ex}")
+        st.info("Check your inputs and try again.")
