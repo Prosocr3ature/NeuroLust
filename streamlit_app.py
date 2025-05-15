@@ -137,7 +137,7 @@ if st.button("Generate"):
             st.error("Failed to retrieve image data for animation.")
             st.stop()
 
-        # Prepare and run animation
+        # Prepare and run animation using wavespeedai/wan-2.1-i2v-480p
         anim_source = image_url if image_url else raw_bytes
         anim_prompt = f"{action_text}, subtle realistic movement loop, breathing and slight motion"
         anim_payload = {
@@ -151,7 +151,7 @@ if st.button("Generate"):
         with st.spinner("Generating animation..."):
             anim_result = run_with_retry("wavespeedai/wan-2.1-i2v-480p", anim_payload)
 
-        # Display animation
+        # Display the looped video
         if hasattr(anim_result, "read"):
             st.video(anim_result.read())
         elif hasattr(anim_result, "url"):
@@ -171,4 +171,3 @@ if st.button("Generate"):
 
     except Exception as e:
         st.error(f"Generation failed: {e}")
-
