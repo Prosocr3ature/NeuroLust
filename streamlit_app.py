@@ -28,17 +28,17 @@ IMAGE_MODELS = {
     }
 }
 
+# ─── Default Jasmine Appearance ──────────────────────────────────────────────
 JASMINE_BASE = (
     "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model "
     "with glistening, wet soft skin and hyper-realistic detail. She has voluptuous curves—huge "
-    "round breasts with nipple piercings, a tiny waist, thick thighs, and a sculpted, big sexy ass—"
-    "adorned in sheer blue fishnet stockings, no underwear, pussy showing. Cinematic studio "
-    "lighting, sharp focus, intricate textures, explicit nudity."
+    "round breasts with nipple piercings, a tiny waist, thick thighs, and a sculpted, big sexy ass—" 
+    "adorned in sheer blue fishnet stockings, no underwear, pussy showing. Cinematic studio lighting, "
+    "sharp focus, intricate textures, explicit nudity."
 )
 
 NEGATIVE_PROMPT = (
-    "ugly face, poorly drawn hands, blurry, lowres, extra limbs, cartoon, censored, watermark, "
-    "jpeg artifacts, error"
+    "ugly face, poorly drawn hands, blurry, lowres, extra limbs, cartoon, censored, watermark, jpeg artifacts, error"
 )
 
 POSE_PRESETS = {
@@ -67,8 +67,8 @@ with st.sidebar:
 
     steps = st.slider("Sampling Steps", 20, 100, config["steps"])
     scale = st.slider("Guidance Scale", 5.0, 15.0, config["scale"])
-    width = st.slider("Width (px)", 512, 1024, config["width"], step=64)
-    height = st.slider("Height (px)", 512, 1536, config["height"], step=64)
+    width = st.slider("Width", 512, 1024, config["width"], step=64)
+    height = st.slider("Height", 512, 1536, config["height"], step=64)
     scheduler = st.selectbox(
         "Scheduler",
         config["schedulers"],
@@ -78,7 +78,7 @@ with st.sidebar:
     extra_negative = st.text_area(
         "Extra Negative Terms (optional):",
         value="",
-        height=80  # must be >= 68px
+        height=80  # must be >=68
     )
     negative_prompt = NEGATIVE_PROMPT + (", " + extra_negative.strip() if extra_negative.strip() else "")
 
@@ -86,13 +86,27 @@ with st.sidebar:
     seed = random.randint(1, 999999) if seed_random else st.number_input("Seed", value=1337)
 
 # ─── Prompt Assembly ─────────────────────────────────────────────────────────
-final_prompt = f"{JASMINE_BASE} She is {action}. This must be pornographic and shown clearly."
+action_phrase = f" She is {action}. This must be pornographic and shown clearly."
+full_prompt = JASMINE_BASE + action_phrase
+
+# ─── Image Display Helper ────────────────────────────────────────────────────
+def show_image(item):
+    if hasattr(item, "read"):
+        data = item.read()
+        st.image(data, use_container_width=True)
+    elif hasattr(item, "url"):
+        st.image(item.url, use_container_width=True)
+    elif isinstance(item, str) and item.startswith("http"):
+        st.image(item, use_container_width=True)
+    else:
+        st.error("Unrecognized output format.")
+        st.write(item)
 
 # ─── Generate & Animate ───────────────────────────────────────────────────────
 if st.button("Generate"):
     st.info(f"Using model: {model_choice}")
     payload = {
-        "prompt": final_prompt.strip(),
+        "prompt": full_prompt.strip(),
         "negative_prompt": negative_prompt.strip(),
         "width": int(width // 8) * 8,
         "height": int(height // 8) * 8,
@@ -101,26 +115,39 @@ if st.button("Generate"):
         "num_inference_steps": steps,
         "scheduler": scheduler
     }
-
     try:
         # Generate static image
         with st.spinner("Generating image..."):
-            output = replicate.run(config["ref"], input=payload)
+            output = replicate_client.run(config["ref"], input=payload)
 
-        image_url = output[0] if isinstance(output, list) else output
-        st.image(image_url, use_container_width=True)
+        # Display and capture URL for animation
+        image_url = None
+        if isinstance(output, list):
+            for img in output:
+                show_image(img)
+                if image_url is None and hasattr(img, "url"):
+                    image_url = img.url
+        else:
+            show_image(output)
+            if hasattr(output, "url"):
+                image_url = output.url
+            elif isinstance(output, str) and output.startswith("http"):
+                image_url = output
 
-        # Animate with wavespeedai WAN
+        if image_url is None:
+            st.error("Could not determine image URL for animation.")
+            st.stop()
+
+        # Animate
         st.success("Now animating...")
         anim_input = {
             "image": image_url,
-            "prompt": "A woman breathing and moving gently, erotic motion.",
+            "prompt": "A woman breathing and moving gently, erotic subtle motion.",
             "loop": True,
             "fps": 10
         }
         with st.spinner("Generating animation..."):
-            anim_url = replicate.run("wavespeedai/wan-2.1-i2v-480p", input=anim_input)
+            anim_url = replicate_client.run("wavespeedai/wan-2.1-i2v-480p", input=anim_input)
             st.video(anim_url)
-
     except Exception as e:
         st.error(f"Generation failed: {e}")
