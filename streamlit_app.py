@@ -1,5 +1,3 @@
-# pip install replicate streamlit requests Pillow
-
 import streamlit as st
 import replicate
 import random
@@ -58,15 +56,15 @@ with st.sidebar:
     ).strip()
     action = custom_action if custom_action else preset_text
 
-    steps = st.slider("Sampling Steps", 20, 100, 50)
-    scale = st.slider("Guidance Scale", 1.0, 20.0, 9.0)
-    width = st.slider("Width (px)", 512, 1024, 768, step=64)
-    height = st.slider("Height (px)", 512, 1536, 1152, step=64)
+    steps = st.slider("Sampling Steps", 20, 100, 90)
+    scale = st.slider("Guidance Scale", 1.0, 20.0, 13.0)
+    width = st.slider("Width (px)", 512, 1024, 1024, step=64)
+    height = st.slider("Height (px)", 512, 1536, 1536, step=64)
     scheduler = st.selectbox("Scheduler:", ["DPMSolverMultistep", "PNDM", "DDIM"], index=0)
 
     neg_extra = st.text_area("Extra Negative Terms (optional):", value="", height=80).strip()
     negative_prompt = (
-        "ugly face, blurry, bad anatomy, cartoon, watermark"
+        "bad anatomy, deformed, blurry, lowres, poorly drawn, cartoon, watermark, jpeg artifacts, unrealistic colors, extra limbs, mutation, glitch, detached head, out of frame, text, logo"
         + (", " + neg_extra if neg_extra else "")
     )
 
@@ -74,13 +72,15 @@ with st.sidebar:
     seed = random.randint(1, 999999) if use_rand else st.number_input("Seed:", value=1234)
 
     st.header("Animation Settings")
-    fps = st.slider("Animation FPS", 1, 30, 10)
+    fps = st.slider("Animation FPS", 1, 30, 12)
     duration = st.slider("Animation Duration (seconds)", 1, 10, 5)
 
 # ─── Prompt Assembly ─────────────────────────────────────────────────────────
+# Use original detailed Jasmine base prompt
 base_prompt = (
-    "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model "
-    "with wet, glistening skin and explicit nudity."
+    "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model with glistening, wet soft skin and hyper-realistic detail. "
+    "She has voluptuous curves—huge round breasts with nipple piercings, a tiny waist, thick thighs, and a sculpted, big sexy ass—adorned in sheer blue fishnet stockings, no underwear, pussy showing. "
+    "Cinematic studio lighting, sharp focus, intricate textures, explicit nudity."
 )
 full_prompt = f"Perform explicitly: {action}. {base_prompt}" if action else base_prompt
 
