@@ -30,7 +30,7 @@ def run_with_retry(model_ref, payload, retries=3, backoff=2):
 # ─── Model & Pose Presets ─────────────────────────────────────────────────────
 IMAGE_MODELS = {
     "Realism XL (Uncensored)": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
-    "Aisha Illust3 Relustion": "aisha-ai-official/illust3relustion:92a0c9a9cb1fd93ea0361d15e499dc879b35095077b2feed47315ccab4524036"
+    "Aisha Illustrious (Beta)": "aisha-ai-official/illustrious-ultra-real-beta"
 }
 POSE_PRESETS = {
     "None": "",
