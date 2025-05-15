@@ -34,7 +34,7 @@ IMAGE_MODELS = {
 }
 POSE_PRESETS = {
     "None": "",
-    "POV Blowjob": "deepthroat blowjob, mouth fully around erect cock, eyes locked, saliva dripping, explicit oral",
+    "POV Blowjob": "POV deepthroat blowjob, mouth fully around erect cock, eyes locked, saliva dripping, explicit oral",
     "Doggy Style": "doggystyle from behind, deep penetration, arched back, wet skin, thrusting",
     "Cowgirl Ride": "cowgirl straddling and riding, bouncing, breasts jiggling, intense gaze",
     "Spread Legs": "laying back with legs spread wide, full pussy exposure, direct eye contact",
@@ -49,12 +49,11 @@ with st.sidebar:
 
     preset = st.selectbox("Pose Preset:", list(POSE_PRESETS.keys()))
     preset_text = POSE_PRESETS[preset]
-    custom_action = st.text_area(
-        "Custom Pose/Action (override):",
-        height=100,
+    custom_text = st.text_area(
+        "Custom Pose/Action (override):", height=100,
         placeholder="e.g. licking, handjob POV"
     ).strip()
-    action = custom_action if custom_action else preset_text
+    action = custom_text if custom_text else preset_text
 
     steps = st.slider("Sampling Steps", 20, 100, 90)
     scale = st.slider("Guidance Scale", 1.0, 20.0, 13.0)
@@ -75,19 +74,55 @@ with st.sidebar:
     fps = st.slider("Animation FPS", 1, 30, 12)
     duration = st.slider("Animation Duration (seconds)", 1, 10, 5)
 
-# ─── Prompt Assembly ─────────────────────────────────────────────────────────
-# Use original detailed Jasmine base prompt
-base_prompt = (
+# ─── Prompt Templates ─────────────────────────────────────────────────────────
+# Jasmine Base
+BASE_PROMPT = (
     "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model with glistening, wet soft skin and hyper-realistic detail. "
     "She has voluptuous curves—huge round breasts with nipple piercings, a tiny waist, thick thighs, and a sculpted, big sexy ass—adorned in sheer blue fishnet stockings, no underwear, pussy showing. "
     "Cinematic studio lighting, sharp focus, intricate textures, explicit nudity."
 )
-full_prompt = f"Perform explicitly: {action}. {base_prompt}" if action else base_prompt
+# Static action-specific prompts
+actions_static = {
+    "POV Blowjob": "POV deepthroat blowjob, close-up of mouth and cock, eyes locked on viewer, saliva dripping, explicit oral",
+    "Doggy Style": "doggy style from behind, full-body shot, deep penetration, arched back, wet skin, rhythmic thrusting",
+    "Cowgirl Ride": "cowgirl position, straddling and riding, bouncing motion, breasts jiggling, intense gaze",
+    "Spread Legs": "laying back with legs spread wide, full pussy exposure, hands on thighs, direct eye contact",
+    "Cum Covered Face": "cum dripping on face, messy hair, tongue out, lustful eyes"
+}
+# Animation action-specific prompts
+actions_anim = {
+    "POV Blowjob": (
+        "deepthroat blowjob, gentle suction and head bobbing, natural slow fellatio motion, "
+        "she willingly takes the cock fully into her mouth then gracefully withdraws"
+    ),
+    "Doggy Style": (
+        "doggystyle from behind, pelvic thrusts with realistic hip movement, muscle flex, wet skin sheen,"
+        "slight body sway"
+    ),
+    "Cowgirl Ride": (
+        "cowgirl straddling and riding, steady bouncing, natural up-and-down motion, breasts and thighs movement,"
+        "subtle torso lean"
+    ),
+    "Spread Legs": (
+        "laying back with legs spread wide, rhythmic thigh opening and closing, slight pelvic lifts, direct eye contact"
+    ),
+    "Cum Covered Face": (
+        "cum dripping on face in slow motion, messy hair, tongue out, subtle facial expressions of pleasure"
+    )
+}
+
+# Determine static prompt
+if preset in actions_static and not custom_text:
+    static_prompt = f"Perform explicitly: {actions_static[preset]}. {BASE_PROMPT}"
+elif custom_text:
+    static_prompt = f"Perform explicitly: {custom_text}. {BASE_PROMPT}"
+else:
+    static_prompt = BASE_PROMPT
 
 # ─── Static Image Generation ──────────────────────────────────────────────────
 def generate_image():
     payload = {
-        "prompt": full_prompt,
+        "prompt": static_prompt,
         "negative_prompt": negative_prompt,
         "width": (width // 8) * 8,
         "height": (height // 8) * 8,
@@ -108,7 +143,6 @@ if st.button("Generate"):
             img_output = generate_image()
         items = img_output if isinstance(img_output, list) else [img_output]
         img_source = None
-
         for item in items:
             if hasattr(item, "url"):
                 img_source = item.url
@@ -117,24 +151,30 @@ if st.button("Generate"):
             if hasattr(item, "read"):
                 data = item.read()
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-                tmp.write(data)
-                tmp.flush()
-                tmp_file = tmp.name
+                tmp.write(data); tmp.flush(); tmp_file = tmp.name
                 st.image(data, use_container_width=True)
                 img_source = tmp_file
                 break
-
         if not img_source:
             st.error("Failed to generate image.")
             st.stop()
+
+        # Determine animation prompt
+        if preset in actions_anim and not custom_text:
+            anim_prompt = f"Perform explicitly: {actions_anim[preset]}."
+        elif custom_text:
+            anim_prompt = f"Perform explicitly: {custom_text}."
+        else:
+            anim_prompt = static_prompt
+        anim_prompt += f" {BASE_PROMPT}"
 
         # Generate video via WAN-2.1 I2V
         st.success("Image done. Generating animation...")
         video_input = {
             "image": img_source,
-            "prompt": full_prompt,
+            "prompt": anim_prompt,
             "fps": fps,
-            "duration": duration  # seconds
+            "duration": duration
         }
         with st.spinner("Generating video..."):
             video_out = run_with_retry("wavespeedai/wan-2.1-i2v-480p", video_input)
@@ -146,17 +186,11 @@ if st.button("Generate"):
             st.video(video_out.read())
         elif isinstance(video_out, list):
             for v in video_out:
-                if hasattr(v, "url"):
-                    st.video(v.url)
-                    break
-                if hasattr(v, "read"):
-                    st.video(v.read())
-                    break
+                if hasattr(v, "url"): st.video(v.url); break
+                if hasattr(v, "read"): st.video(v.read()); break
         else:
             st.error("Unrecognized video output.")
-
     except Exception as e:
         st.error(f"Error: {e}")
     finally:
-        if tmp_file and os.path.exists(tmp_file):
-            os.unlink(tmp_file)
+        if tmp_file and os.path.exists(tmp_file): os.unlink(tmp_file)
