@@ -129,33 +129,39 @@ if st.button("Generate"):
             st.error("Failed to retrieve image data for animation.")
             st.stop()
 
-        # Prepare input for animation: prefer URL, else file handle
-        if image_url:
-            anim_input_image = image_url
-        else:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-            tmp.write(raw_bytes)
-            tmp.flush()
-            anim_input_image = open(tmp.name, "rb")
+        # Choose source for animation
+        anim_source = image_url if image_url else raw_bytes
 
         st.success("Image generated. Now animating...")
         anim_prompt = f"{action_text}, subtle realistic movement loop, breathing and slight motion"
         anim_payload = {
-            "image": anim_input_image,
+            "image": anim_source,
             "prompt": anim_prompt,
             "loop": True,
             "fps": 10
         }
         with st.spinner("Generating animation..."):
-            anim_url = replicate_client.run("wavespeedai/wan-2.1-i2v-480p", input=anim_payload)
-        st.video(anim_url)
+            anim_output = replicate_client.run(
+                "wavespeedai/wan-2.1-i2v-480p", input=anim_payload
+            )
 
-        # Cleanup temporary file if used
-        if 'tmp' in locals():
-            try:
-                anim_input_image.close()
-                os.unlink(tmp.name)
-            except:
-                pass
+        # Handle animation FileOutput or URL
+        if hasattr(anim_output, "read"):
+            video_bytes = anim_output.read()
+            st.video(video_bytes)
+        elif hasattr(anim_output, "url"):
+            st.video(anim_output.url)
+        elif isinstance(anim_output, list):
+            for a in anim_output:
+                if hasattr(a, "read"):
+                    st.video(a.read())
+                    break
+                elif hasattr(a, "url"):
+                    st.video(a.url)
+                    break
+        elif isinstance(anim_output, str) and anim_output.startswith("http"):
+            st.video(anim_output)
+        else:
+            st.error("Unrecognized animation output.")
     except Exception as e:
         st.error(f"Generation failed: {e}")
