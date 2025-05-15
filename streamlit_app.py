@@ -1,10 +1,11 @@
 import streamlit as st
 import replicate
 import random
+import time
 import tempfile
 import os
 
-# ─── App Config ───────────────────────────────────────────────────────────────
+# ─── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="NeuroLust", layout="wide")
 st.title("🔥 NeuroLust: Uncensored AI Image Generator")
 
@@ -14,7 +15,20 @@ if "REPLICATE_API_TOKEN" not in st.secrets:
     st.stop()
 replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
 
-# ─── Models ─────────────────────────────────────────────────────────────────────
+# ─── Utility: Retry wrapper for 5xx errors ─────────────────────────────────────
+def run_with_retry(model_ref, payload, retries=3, backoff=2):
+    for attempt in range(retries):
+        try:
+            return replicate_client.run(model_ref, input=payload)
+        except replicate.exceptions.ReplicateError as e:
+            err_str = str(e).lower()
+            if "503" in err_str or "internal server error" in err_str:
+                if attempt < retries - 1:
+                    time.sleep(backoff * (attempt + 1))
+                    continue
+            raise
+
+# ─── Model Definitions ───────────────────────────────────────────────────────
 IMAGE_MODELS = {
     "Realism XL (Uncensored)": {
         "ref": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
@@ -50,7 +64,7 @@ POSE_PRESETS = {
     "Face Covered in Cum": "cum dripping on face, messy hair, tongue out, lustful eyes"
 }
 
-# ─── Sidebar UI ───────────────────────────────────────────────────────────────
+# ─── Sidebar UI ────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Model Settings")
     model_choice = st.selectbox("Choose model:", list(IMAGE_MODELS.keys()))
@@ -65,7 +79,6 @@ with st.sidebar:
     ).strip()
     action_text = custom_text if custom_text else preset_text
 
-    # Sliders
     steps = st.slider("Sampling Steps", 20, 100, config["steps"])
     scale = st.slider("Guidance Scale", 5.0, 15.0, config["scale"])
     width = st.slider("Width (px)", 512, 1024, config["width"], step=64)
@@ -76,21 +89,16 @@ with st.sidebar:
         index=config["schedulers"].index(config["scheduler"])
     )
 
-    extra_neg = st.text_area(
-        "Add extra negatives (optional):",
-        value="",
-        height=80
-    ).strip()
+    extra_neg = st.text_area("Add extra negatives (optional):", value="", height=80).strip()
     negative_prompt = NEGATIVE_PROMPT + (", " + extra_neg if extra_neg else "")
 
     seed_random = st.checkbox("Random seed", value=True)
     seed = random.randint(1, 999999) if seed_random else st.number_input("Seed:", value=1337)
 
 # ─── Prompt Assembly ─────────────────────────────────────────────────────────
-# Always prepend the explicit action to ensure the model focuses on it
 full_prompt = f"{action_text}, {JASMINE_BASE}" if action_text else JASMINE_BASE
 
-# ─── Generation Helper ─────────────────────────────────────────────────────── ───────────────────────────────────────────────────────
+# ─── Generation Helper ───────────────────────────────────────────────────────
 def generate_image():
     payload = {
         "prompt": full_prompt.strip(),
@@ -102,18 +110,18 @@ def generate_image():
         "num_inference_steps": steps,
         "scheduler": scheduler
     }
-    return replicate_client.run(config["ref"], input=payload)
+    return run_with_retry(config["ref"], payload)
 
-# ─── Execute Generation & Animation ───────────────────────────────────────────────────────
+# ─── Generate & Animate ───────────────────────────────────────────────────────
 if st.button("Generate"):
     st.info(f"Using model: {model_choice}")
     try:
-        # Generate static image
+        # Static image generation
         with st.spinner("Generating image..."):
             result = generate_image()
         items = result if isinstance(result, list) else [result]
-        raw_bytes = None
         image_url = None
+        raw_bytes = None
         for img in items:
             if hasattr(img, "read"):
                 raw_bytes = img.read()
@@ -129,10 +137,8 @@ if st.button("Generate"):
             st.error("Failed to retrieve image data for animation.")
             st.stop()
 
-        # Choose source for animation
+        # Prepare and run animation
         anim_source = image_url if image_url else raw_bytes
-
-        st.success("Image generated. Now animating...")
         anim_prompt = f"{action_text}, subtle realistic movement loop, breathing and slight motion"
         anim_payload = {
             "image": anim_source,
@@ -140,28 +146,29 @@ if st.button("Generate"):
             "loop": True,
             "fps": 10
         }
-        with st.spinner("Generating animation..."):
-            anim_output = replicate_client.run(
-                "wavespeedai/wan-2.1-i2v-480p", input=anim_payload
-            )
 
-        # Handle animation FileOutput or URL
-        if hasattr(anim_output, "read"):
-            video_bytes = anim_output.read()
-            st.video(video_bytes)
-        elif hasattr(anim_output, "url"):
-            st.video(anim_output.url)
-        elif isinstance(anim_output, list):
-            for a in anim_output:
+        st.success("Image generated. Now animating...")
+        with st.spinner("Generating animation..."):
+            anim_result = run_with_retry("wavespeedai/wan-2.1-i2v-480p", anim_payload)
+
+        # Display animation
+        if hasattr(anim_result, "read"):
+            st.video(anim_result.read())
+        elif hasattr(anim_result, "url"):
+            st.video(anim_result.url)
+        elif isinstance(anim_result, str) and anim_result.startswith("http"):
+            st.video(anim_result)
+        elif isinstance(anim_result, list):
+            for a in anim_result:
                 if hasattr(a, "read"):
                     st.video(a.read())
                     break
-                elif hasattr(a, "url"):
+                if hasattr(a, "url"):
                     st.video(a.url)
                     break
-        elif isinstance(anim_output, str) and anim_output.startswith("http"):
-            st.video(anim_output)
         else:
             st.error("Unrecognized animation output.")
+
     except Exception as e:
         st.error(f"Generation failed: {e}")
+
