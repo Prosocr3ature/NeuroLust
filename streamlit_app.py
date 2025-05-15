@@ -13,7 +13,7 @@ if "REPLICATE_API_TOKEN" not in st.secrets:
 
 replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
 
-# ─── Model Definitions & Schedulers ──────────────────────────────────────────
+# ─── Model Definitions ───────────────────────────────────────────────────────
 IMAGE_MODELS = {
     "Realism XL (Uncensored)": {
         "ref": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
@@ -29,6 +29,7 @@ IMAGE_MODELS = {
     }
 }
 
+# ─── Default Jasmine Appearance ──────────────────────────────────────────────
 JASMINE_BASE = (
     "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model "
     "with glistening, wet soft skin and hyper-realistic detail. She has voluptuous curves—huge "
@@ -43,39 +44,35 @@ NEGATIVE_PROMPT = (
     "bad proportions, unnatural colors, bad anatomy, unrealistic, duplicate"
 )
 
-# ─── Sidebar ─────────────────────────────────────────────────────────────────
+# ─── Sidebar UI ───────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Model Settings")
-    model_choice = st.selectbox("Choose image model:", list(IMAGE_MODELS.keys()))
+    model_choice = st.selectbox("Choose model", list(IMAGE_MODELS.keys()))
     config = IMAGE_MODELS[model_choice]
 
     user_action = st.text_area(
-        "Describe Jasmine's pose/action (explicit allowed):",
+        "Jasmine's Pose/Action (Explicit):",
         height=120,
-        placeholder="e.g. spreading legs, doggystyle, licking, riding, POV blowjob"
+        placeholder="e.g. spreading legs, doggystyle, licking, POV blowjob"
     )
 
-    # Dynamic sliders based on model's default
     steps = st.slider("Sampling Steps", 20, 100, config["steps"])
     scale = st.slider("Guidance Scale", 5.0, 15.0, config["scale"])
-    width = st.slider("Image Width (px)", 512, 1024, config["width"], step=64)
-    height = st.slider("Image Height (px)", 512, 1536, config["height"], step=64)
+    width = st.slider("Width (px)", 512, 1024, config["width"], step=64)
+    height = st.slider("Height (px)", 512, 1536, config["height"], step=64)
+    scheduler = st.selectbox("Scheduler", config["schedulers"], index=config["schedulers"].index(config["scheduler"]))
 
-    schedulers = config["schedulers"]
-    scheduler = st.selectbox("Diffusion Scheduler", schedulers, index=schedulers.index(config["scheduler"]))
-
-    # UNIQUE LABEL for extra negative prompt
     extra_negative = st.text_area(
-        "Add extra negative prompt terms (optional):",
+        "Add extra negatives (optional):",
         value="",
-        height=50
+        height=80  # FIX: must be >=68
     )
     full_negative_prompt = NEGATIVE_PROMPT + (", " + extra_negative.strip() if extra_negative.strip() else "")
 
     seed_random = st.checkbox("Use random seed", value=True)
-    seed = random.randint(1, 999999) if seed_random else st.number_input("Seed value", value=1337)
+    seed = random.randint(1, 999999) if seed_random else st.number_input("Seed", value=1337)
 
-# ─── Prompt Assembly ─────────────────────────────────────────────────────────
+# ─── Final Prompt ─────────────────────────────────────────────────────────────
 if user_action.strip():
     action_phrase = f" She is {user_action.strip()}. This is explicit and must be shown with no censorship."
 else:
@@ -83,9 +80,9 @@ else:
 
 full_prompt = JASMINE_BASE + action_phrase
 
-# ─── Generate Button ─────────────────────────────────────────────────────────
+# ─── Generate Image ───────────────────────────────────────────────────────────
 if st.button("Generate"):
-    st.info(f"Generating with {model_choice}…")
+    st.info(f"Using model: {model_choice}…")
 
     payload = {
         "prompt": full_prompt.strip(),
