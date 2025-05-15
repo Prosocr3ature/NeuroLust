@@ -2,29 +2,26 @@ import streamlit as st
 import replicate
 import random
 
-# ─── Page Config ─────────────────────────────────────────────────────────────
 st.set_page_config(page_title="NeuroLust", layout="wide")
 st.title("🔥 NeuroLust: Uncensored AI Image Generator")
 
-# ─── API Token ───────────────────────────────────────────────────────────────
 if "REPLICATE_API_TOKEN" not in st.secrets:
-    st.error("Replicate API token not found in Streamlit secrets as REPLICATE_API_TOKEN.")
+    st.error("Missing Replicate API token in Streamlit secrets.")
     st.stop()
 
 replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
 
-# ─── Model Definitions ───────────────────────────────────────────────────────
 IMAGE_MODELS = {
     "Realism XL (Uncensored)": {
         "ref": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
         "steps": 45, "scale": 8.0, "width": 768, "height": 1152,
-        "schedulers": ["DPMSolverMultistep", "PNDM", "DDIM", "HeunDiscrete", "KarrasDPM", "K_EULER_ANCESTRAL", "K_EULER"],
+        "schedulers": ["DPMSolverMultistep", "PNDM", "DDIM"],
         "scheduler": "DPMSolverMultistep"
     },
     "Aisha Illust3 Relustion": {
         "ref": "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8",
         "steps": 40, "scale": 9.0, "width": 768, "height": 1152,
-        "schedulers": ["PNDM", "DDIM", "DPMSolverMultistep", "HeunDiscrete", "K_EULER_ANCESTRAL", "K_EULER"],
+        "schedulers": ["PNDM", "DDIM", "DPMSolverMultistep"],
         "scheduler": "PNDM"
     }
 }
@@ -38,60 +35,48 @@ JASMINE_BASE = (
 )
 
 NEGATIVE_PROMPT = (
-    "ugly face, poorly drawn hands, poorly drawn feet, blurry, lowres, extra limbs, "
-    "cartoon, censored, watermark, jpeg artifacts, nsfw warning, error, cropped, out of frame, "
-    "bad proportions, unnatural colors, bad anatomy, unrealistic, duplicate"
+    "ugly face, poorly drawn hands, blurry, lowres, extra limbs, cartoon, censored, watermark, jpeg artifacts, error"
 )
 
 POSE_PRESETS = {
     "None": "",
-    "POV Blowjob": "on her knees giving deepthroat POV blowjob, eyes locked on viewer, messy wet mouth, saliva dripping, obedient expression",
-    "Doggy Style": "on all fours, viewed from behind, huge ass arched up, submissive posture, exposed pussy, full penetration, wet skin",
-    "Riding Cowgirl": "riding cock, legs spread, bouncing up and down, breasts jiggling, erotic gaze downward, high arousal",
-    "Spread Legs": "laying back with legs spread wide, pussy exposed, hands on thighs, direct eye contact, submissive pose",
-    "Cum Covered Face": "kneeling with cum dripping down face, messy hair, tongue out, cock in frame, intense eye contact"
+    "POV Blowjob": "on her knees giving deepthroat POV blowjob, eyes locked on viewer, wet mouth, messy",
+    "Doggy Style": "on all fours, viewed from behind, huge ass up, submissive posture",
+    "Cowgirl Ride": "straddling and riding, breasts bouncing, looking down",
+    "Face Covered in Cum": "kneeling with cum on face, tongue out, cock in frame"
 }
 
-# ─── Sidebar UI ───────────────────────────────────────────────────────────────
+# Sidebar
 with st.sidebar:
-    st.header("Model Settings")
-    model_choice = st.selectbox("Choose model", list(IMAGE_MODELS.keys()))
+    model_choice = st.selectbox("Model", list(IMAGE_MODELS.keys()))
     config = IMAGE_MODELS[model_choice]
 
-    pose_choice = st.selectbox("Pose Preset (explicit):", list(POSE_PRESETS.keys()))
+    pose_choice = st.selectbox("Pose Preset", list(POSE_PRESETS.keys()))
     pose_text = POSE_PRESETS[pose_choice]
 
-    custom_action = st.text_area(
-        "Custom pose/action (overrides preset if filled):",
-        height=120,
-        placeholder="e.g. licking, handjob POV, mounting from behind"
-    )
-
-    action_description = custom_action.strip() if custom_action.strip() else pose_text
+    custom_pose = st.text_area("Custom Pose/Action (overrides preset):", height=100)
+    action = custom_pose.strip() if custom_pose else pose_text
 
     steps = st.slider("Sampling Steps", 20, 100, config["steps"])
     scale = st.slider("Guidance Scale", 5.0, 15.0, config["scale"])
-    width = st.slider("Width (px)", 512, 1024, config["width"], step=64)
-    height = st.slider("Height (px)", 512, 1536, config["height"], step=64)
+    width = st.slider("Width", 512, 1024, config["width"], step=64)
+    height = st.slider("Height", 512, 1536, config["height"], step=64)
     scheduler = st.selectbox("Scheduler", config["schedulers"], index=config["schedulers"].index(config["scheduler"]))
 
-    extra_negative = st.text_area("Add extra negatives (optional):", value="", height=80)
-    full_negative_prompt = NEGATIVE_PROMPT + (", " + extra_negative.strip() if extra_negative.strip() else "")
+    user_negative = st.text_area("Extra Negatives", value="", height=80)
+    negative_prompt = NEGATIVE_PROMPT + (", " + user_negative if user_negative else "")
 
-    seed_random = st.checkbox("Use random seed", value=True)
+    seed_random = st.checkbox("Random seed", value=True)
     seed = random.randint(1, 999999) if seed_random else st.number_input("Seed", value=1337)
 
-# ─── Prompt Assembly ─────────────────────────────────────────────────────────
-action_phrase = f" She is {action_description}. This must be visually explicit, realistic and pornographic."
-full_prompt = JASMINE_BASE + action_phrase
+# Prompt assembly
+final_prompt = f"{JASMINE_BASE} She is {action}. This must be pornographic and shown clearly."
 
-# ─── Generate Button ─────────────────────────────────────────────────────────
 if st.button("Generate"):
-    st.info(f"Using model: {model_choice}…")
-
+    st.info(f"Using: {model_choice}")
     payload = {
-        "prompt": full_prompt.strip(),
-        "negative_prompt": full_negative_prompt.strip(),
+        "prompt": final_prompt.strip(),
+        "negative_prompt": negative_prompt.strip(),
         "width": int(width // 8) * 8,
         "height": int(height // 8) * 8,
         "guidance_scale": scale,
@@ -101,38 +86,24 @@ if st.button("Generate"):
     }
 
     try:
-        with st.spinner("Generating Jasmine image..."):
+        with st.spinner("Generating image..."):
             output = replicate.run(config["ref"], input=payload)
 
         image_url = output[0] if isinstance(output, list) else output
         st.image(image_url, use_container_width=True)
 
-        st.success("Image generation complete! Now animating...")
+        st.success("Now animating...")
 
-        # ─── Animate ──────────────────────────────────────────────────────────
         animation_input = {
             "image": image_url,
-            "prompt": "A woman breathing gently, realistic head and body motion, subtle erotic loop.",
+            "prompt": "A woman breathing and moving gently, erotic motion.",
             "loop": True,
             "fps": 10
         }
 
-        with st.spinner("Animating Jasmine..."):
-            gif_output = replicate.run("wavespeedai/wan-2.1-i2v-480p", input=animation_input)
-            st.video(gif_output)
+        with st.spinner("Generating looped animation..."):
+            animation_url = replicate.run("wavespeedai/wan-2.1-i2v-480p", input=animation_input)
+            st.video(animation_url)
 
     except Exception as e:
-        st.error(f"Image or animation generation failed: {e}")
-
-
-Done. Your app now automatically animates the generated Jasmine image into a realistic looped video using the free wavespeedai/wan-2.1-i2v-480p model.
-
-Let me know if you want:
-
-Download button for the video
-
-GIF export
-
-Multi-pose batch animation
-
-
+        st.error(f"Generation failed: {e}")
