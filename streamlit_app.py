@@ -6,7 +6,7 @@ st.set_page_config(page_title="NeuroLust", layout="wide")
 st.title("🔥 NeuroLust: Uncensored AI Image Generator")
 
 if "REPLICATE_API_TOKEN" not in st.secrets:
-    st.error("Missing Replicate API token in Streamlit secrets.")
+    st.error("Replicate API token not found in Streamlit secrets as REPLICATE_API_TOKEN.")
     st.stop()
 
 replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
@@ -46,7 +46,6 @@ POSE_PRESETS = {
     "Face Covered in Cum": "kneeling with cum on face, tongue out, cock in frame"
 }
 
-# Sidebar
 with st.sidebar:
     model_choice = st.selectbox("Model", list(IMAGE_MODELS.keys()))
     config = IMAGE_MODELS[model_choice]
@@ -69,9 +68,10 @@ with st.sidebar:
     seed_random = st.checkbox("Random seed", value=True)
     seed = random.randint(1, 999999) if seed_random else st.number_input("Seed", value=1337)
 
-# Prompt assembly
+# Final prompt
 final_prompt = f"{JASMINE_BASE} She is {action}. This must be pornographic and shown clearly."
 
+# Generate button
 if st.button("Generate"):
     st.info(f"Using: {model_choice}")
     payload = {
@@ -101,7 +101,7 @@ if st.button("Generate"):
             "fps": 10
         }
 
-        with st.spinner("Generating looped animation..."):
+        with st.spinner("Generating animation..."):
             animation_url = replicate.run("wavespeedai/wan-2.1-i2v-480p", input=animation_input)
             st.video(animation_url)
 
