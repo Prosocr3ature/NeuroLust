@@ -1,8 +1,10 @@
 import streamlit as st
 import replicate
 import random
+import tempfile
+import os
 
-# ─── Page Config ─────────────────────────────────────────────────────────────
+# ─── App Config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="NeuroLust", layout="wide")
 st.title("🔥 NeuroLust: Uncensored AI Image Generator")
 
@@ -12,7 +14,7 @@ if "REPLICATE_API_TOKEN" not in st.secrets:
     st.stop()
 replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
 
-# ─── Model Definitions ───────────────────────────────────────────────────────
+# ─── Models ─────────────────────────────────────────────────────────────────────
 IMAGE_MODELS = {
     "Realism XL (Uncensored)": {
         "ref": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
@@ -28,12 +30,11 @@ IMAGE_MODELS = {
     }
 }
 
+# ─── Base Prompts ─────────────────────────────────────────────────────────────
 JASMINE_BASE = (
-    "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model "
-    "with glistening, wet soft skin and hyper-realistic detail. She has voluptuous curves—huge "
-    "round breasts with nipple piercings, a tiny waist, thick thighs, and a sculpted, big sexy ass—" 
-    "adorned in sheer blue fishnet stockings, no underwear, pussy showing. Cinematic studio lighting, "
-    "sharp focus, intricate textures, explicit nudity."
+    "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model with glistening, wet soft skin and hyper-realistic detail. "
+    "She has voluptuous curves—huge round breasts with nipple piercings, a tiny waist, thick thighs, and a sculpted, big sexy ass—adorned in sheer blue fishnet stockings, no underwear, pussy showing. "
+    "Cinematic studio lighting, sharp focus, intricate textures, explicit nudity."
 )
 
 NEGATIVE_PROMPT = (
@@ -42,59 +43,52 @@ NEGATIVE_PROMPT = (
 
 POSE_PRESETS = {
     "None": "",
-    "POV Blowjob": "on her knees giving deepthroat POV blowjob, eyes locked on viewer, wet mouth, messy",
-    "Doggy Style": "on all fours, viewed from behind, huge ass up, submissive posture",
-    "Cowgirl Ride": "straddling and riding, breasts bouncing, looking down",
-    "Face Covered in Cum": "kneeling with cum on face, tongue out, cock in frame"
+    "POV Blowjob": "POV deepthroat blowjob, eyes locked on viewer, mouth wrapped around large cock, saliva dripping, explicit oral",
+    "Doggy Style": "doggystyle from behind, full penetration, arched back, wet skin, thrusting",
+    "Cowgirl Ride": "cowgirl position riding a large cock, bouncing motion, breasts jiggling, intense gaze",
+    "Spread Legs": "laying back with legs spread wide, full pussy exposure, hands on thighs, direct eye contact",
+    "Face Covered in Cum": "cum dripping on face, messy hair, tongue out, lustful eyes"
 }
 
 # ─── Sidebar UI ───────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Model Settings")
-    model_choice = st.selectbox("Model", list(IMAGE_MODELS.keys()))
+    model_choice = st.selectbox("Choose model:", list(IMAGE_MODELS.keys()))
     config = IMAGE_MODELS[model_choice]
 
-    pose_choice = st.selectbox("Pose Preset", list(POSE_PRESETS.keys()))
-    pose_text = POSE_PRESETS[pose_choice]
-
-    custom_pose = st.text_area(
+    pose_choice = st.selectbox("Pose Preset:", list(POSE_PRESETS.keys()))
+    preset_text = POSE_PRESETS[pose_choice]
+    custom_text = st.text_area(
         "Custom Pose/Action (overrides preset):",
         height=100,
-        placeholder="e.g. licking, handjob POV, mounting from behind"
-    )
-    action = custom_pose.strip() if custom_pose else pose_text
+        placeholder="e.g. handjob POV, licking, mounting from behind"
+    ).strip()
+    action_text = custom_text if custom_text else preset_text
 
     # Generation parameters
     steps = st.slider("Sampling Steps", 20, 100, config["steps"])
     scale = st.slider("Guidance Scale", 5.0, 15.0, config["scale"])
     width = st.slider("Width (px)", 512, 1024, config["width"], step=64)
     height = st.slider("Height (px)", 512, 1536, config["height"], step=64)
-    scheduler = st.selectbox(
-        "Scheduler",
-        config["schedulers"],
-        index=config["schedulers"].index(config["scheduler"])
-    )
+    scheduler = st.selectbox("Scheduler:", config["schedulers"], index=config["schedulers"].index(config["scheduler"]))
 
-    extra_negative = st.text_area(
+    extra_neg = st.text_area(
         "Extra Negative Terms (optional):",
         value="",
         height=80
-    )
-    negative_prompt = NEGATIVE_PROMPT + (", " + extra_negative.strip() if extra_negative.strip() else "")
+    ).strip()
+    negative_prompt = NEGATIVE_PROMPT + (", " + extra_neg if extra_neg else "")
 
     seed_random = st.checkbox("Random seed", value=True)
-    seed = random.randint(1, 999999) if seed_random else st.number_input("Seed", value=1337)
+    seed = random.randint(1, 999999) if seed_random else st.number_input("Seed:", value=1337)
 
 # ─── Prompt Assembly ─────────────────────────────────────────────────────────
-action_phrase = f" She is {action}. This must be pornographic and shown clearly."
-full_prompt = JASMINE_BASE + action_phrase
+# Prepend action to ensure model prioritizes it
+full_prompt = (action_text + ", " + JASMINE_BASE) if action_text else JASMINE_BASE
 
-# ─── Helper to show image and capture raw bytes or URL ─────────────────════
-
-def generate_and_display():
-    raw_bytes = None
-    image_url = None
-    output = replicate_client.run(config["ref"], input={
+# ─── Generation Helper ───────────────────────────────────────────────────────
+def generate_image():
+    payload = {
         "prompt": full_prompt.strip(),
         "negative_prompt": negative_prompt.strip(),
         "width": int(width // 8) * 8,
@@ -103,43 +97,44 @@ def generate_and_display():
         "seed": seed,
         "num_inference_steps": steps,
         "scheduler": scheduler
-    })
-    items = output if isinstance(output, list) else [output]
-    for item in items:
-        if hasattr(item, "read"):
-            raw_bytes = item.read()
-            st.image(raw_bytes, use_container_width=True)
-        elif hasattr(item, "url"):
-            image_url = item.url
-            st.image(image_url, use_container_width=True)
-        elif isinstance(item, str) and item.startswith("http"):
-            image_url = item
-            st.image(image_url, use_container_width=True)
-        else:
-            st.error("Unrecognized output format.")
-            st.write(item)
-    return raw_bytes, image_url
+    }
+    return replicate_client.run(config["ref"], input=payload)
 
-# ─── Generate & Animate ───────────────────────────────────────────────────────
+# ─── Execute Generation & Animation ───────────────────────────────────────────
 if st.button("Generate"):
     st.info(f"Using model: {model_choice}")
     try:
         with st.spinner("Generating image..."):
-            raw_image, image_url = generate_and_display()
-        if not raw_image and not image_url:
-            st.error("Failed to generate a valid image.")
+            result = generate_image()
+
+        items = result if isinstance(result, list) else [result]
+        image_url = None
+        for img in items:
+            if hasattr(img, "read"):
+                data = img.read()
+                st.image(data, use_container_width=True)
+            elif hasattr(img, "url"):
+                image_url = img.url
+                st.image(image_url, use_container_width=True)
+            elif isinstance(img, str) and img.startswith("http"):
+                image_url = img
+                st.image(image_url, use_container_width=True)
+
+        if not image_url:
+            st.error("Failed to retrieve image URL for animation.")
             st.stop()
-        # Pick raw bytes if available else URL
-        anim_input_image = raw_image if raw_image else image_url
-        st.success("Now animating...")
-        anim_input = {
-            "image": anim_input_image,
-            "prompt": "A woman breathing and moving gently, erotic subtle motion.",
+
+        st.success("Image generated. Now animating...")
+        # Animate with dynamic action in loop prompt
+        anim_prompt = action_text + ", subtle realistic movement loop, breathing, slight head and body motion"
+        anim_payload = {
+            "image": image_url,
+            "prompt": anim_prompt,
             "loop": True,
             "fps": 10
         }
         with st.spinner("Generating animation..."):
-            anim_url = replicate_client.run("wavespeedai/wan-2.1-i2v-480p", input=anim_input)
-            st.video(anim_url)
+            anim_url = replicate_client.run("wavespeedai/wan-2.1-i2v-480p", input=anim_payload)
+        st.video(anim_url)
     except Exception as e:
         st.error(f"Generation failed: {e}")
