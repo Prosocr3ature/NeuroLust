@@ -142,41 +142,36 @@ if st.button("Generate"):
             st.error("Failed to generate image.")
             st.stop()
 
-        # Animation action-specific prompts
-        actions_anim = {
-            "POV Blowjob": (
-                "deepthroat blowjob, gentle suction and head bobbing, natural fellatio motion, she willingly takes the cock fully in then gracefully withdraws"
-            ),
-            "Doggy Style": (
-                "doggy style from behind, pelvic thrusts with realistic hip movement, muscle flex, wet skin sheen, slight body sway"
-            ),
-            "Cowgirl Ride": (
-                "cowgirl straddling and riding, steady bouncing, natural up-down motion, breasts and thighs movement, subtle torso lean"
-            ),
-            "Spread Legs": (
-                "laying back with legs spread wide, rhythmic thigh opening and closing, slight pelvic lifts, direct eye contact"
-            ),
-            "Cum Covered Face": (
-                "cum dripping on face, messy hair, tongue out, subtle facial expressions of pleasure"
-            )
-        }
-        if preset in actions_anim and not custom_text:
-            anim_prompt = f"Perform explicitly: {actions_anim[preset]}. {BASE_PROMPT}"
-        elif custom_text:
-            anim_prompt = f"Perform explicitly: {custom_text}. {BASE_PROMPT}"
-        else:
-            anim_prompt = static_prompt
+        # Choose animation model
+        st.header("Animation Generation")
+        anim_choice = st.selectbox(
+            "Choose Animation Model:",
+            ["WAN-2.1-i2v-480p", "Stable Video Diffusion"]
+        )
+        st.caption("WAN = prompt-conditioned free-form loops; SVD = smooth, physics-inspired motion.")
 
-        # Generate video via WAN-2.1 I2V
-        st.success("Image done. Generating animation...")
-        video_input = {
-            "image": img_source,
-            "prompt": anim_prompt,
-            "fps": fps,
-            "duration": duration
-        }
-        with st.spinner("Generating video..."):
-            video_out = run_with_retry("wavespeedai/wan-2.1-i2v-480p", video_input)
+        st.success("Static image done. Generating animation...")
+        if anim_choice == "Stable Video Diffusion":
+            svd_payload = {
+                "input_image": img_source,
+                "video_length": "25_frames_with_svd_xt",
+                "frames_per_second": fps,
+                "seed": seed
+            }
+            with st.spinner("Calling Stable Video Diffusion..."):
+                video_out = run_with_retry(
+                    "christophy/stable-video-diffusion:92a0c9a9cb1fd93ea0361d15e499dc879b35095077b2feed47315ccab4524036",
+                    svd_payload
+                )
+        else:
+            wan_payload = {
+                "image": img_source,
+                "prompt": anim_prompt,
+                "fps": fps,
+                "duration": duration
+            }
+            with st.spinner("Calling WAN-2.1-i2v-480p..."):
+                video_out = run_with_retry("wavespeedai/wan-2.1-i2v-480p", wan_payload)
 
         # Display video
         if hasattr(video_out, "url"):
