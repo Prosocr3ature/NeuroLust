@@ -36,11 +36,11 @@ JASMINE_BASE = (
     "She has voluptuous curves—huge round breasts with nipple piercings, a tiny waist, thick thighs, and a sculpted, big sexy ass—adorned in sheer blue fishnet stockings, no underwear, pussy showing. "
     "Cinematic studio lighting, sharp focus, intricate textures, explicit nudity."
 )
-
 NEGATIVE_PROMPT = (
     "ugly face, poorly drawn hands, blurry, lowres, extra limbs, cartoon, censored, watermark, jpeg artifacts, error"
 )
 
+# ─── Pose Presets ─────────────────────────────────────────────────────────────
 POSE_PRESETS = {
     "None": "",
     "POV Blowjob": "POV deepthroat blowjob, eyes locked on viewer, mouth wrapped around large cock, saliva dripping, explicit oral",
@@ -65,15 +65,19 @@ with st.sidebar:
     ).strip()
     action_text = custom_text if custom_text else preset_text
 
-    # Generation parameters
+    # Sliders
     steps = st.slider("Sampling Steps", 20, 100, config["steps"])
     scale = st.slider("Guidance Scale", 5.0, 15.0, config["scale"])
     width = st.slider("Width (px)", 512, 1024, config["width"], step=64)
     height = st.slider("Height (px)", 512, 1536, config["height"], step=64)
-    scheduler = st.selectbox("Scheduler:", config["schedulers"], index=config["schedulers"].index(config["scheduler"]))
+    scheduler = st.selectbox(
+        "Scheduler:",
+        config["schedulers"],
+        index=config["schedulers"].index(config["scheduler"])
+    )
 
     extra_neg = st.text_area(
-        "Extra Negative Terms (optional):",
+        "Add extra negatives (optional):",
         value="",
         height=80
     ).strip()
@@ -83,10 +87,10 @@ with st.sidebar:
     seed = random.randint(1, 999999) if seed_random else st.number_input("Seed:", value=1337)
 
 # ─── Prompt Assembly ─────────────────────────────────────────────────────────
-# Prepend action to ensure model prioritizes it
-full_prompt = (action_text + ", " + JASMINE_BASE) if action_text else JASMINE_BASE
+# Always prepend the explicit action to ensure the model focuses on it
+full_prompt = f"{action_text}, {JASMINE_BASE}" if action_text else JASMINE_BASE
 
-# ─── Generation Helper ───────────────────────────────────────────────────────
+# ─── Generation Helper ─────────────────────────────────────────────────────── ───────────────────────────────────────────────────────
 def generate_image():
     payload = {
         "prompt": full_prompt.strip(),
@@ -100,19 +104,20 @@ def generate_image():
     }
     return replicate_client.run(config["ref"], input=payload)
 
-# ─── Execute Generation & Animation ───────────────────────────────────────────
+# ─── Execute Generation & Animation ───────────────────────────────────────────────────────
 if st.button("Generate"):
     st.info(f"Using model: {model_choice}")
     try:
+        # Generate static image
         with st.spinner("Generating image..."):
             result = generate_image()
-
         items = result if isinstance(result, list) else [result]
+        raw_bytes = None
         image_url = None
         for img in items:
             if hasattr(img, "read"):
-                data = img.read()
-                st.image(data, use_container_width=True)
+                raw_bytes = img.read()
+                st.image(raw_bytes, use_container_width=True)
             elif hasattr(img, "url"):
                 image_url = img.url
                 st.image(image_url, use_container_width=True)
@@ -120,15 +125,23 @@ if st.button("Generate"):
                 image_url = img
                 st.image(image_url, use_container_width=True)
 
-        if not image_url:
-            st.error("Failed to retrieve image URL for animation.")
+        if not image_url and not raw_bytes:
+            st.error("Failed to retrieve image data for animation.")
             st.stop()
 
+        # Prepare input for animation: prefer URL, else file handle
+        if image_url:
+            anim_input_image = image_url
+        else:
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+            tmp.write(raw_bytes)
+            tmp.flush()
+            anim_input_image = open(tmp.name, "rb")
+
         st.success("Image generated. Now animating...")
-        # Animate with dynamic action in loop prompt
-        anim_prompt = action_text + ", subtle realistic movement loop, breathing, slight head and body motion"
+        anim_prompt = f"{action_text}, subtle realistic movement loop, breathing and slight motion"
         anim_payload = {
-            "image": image_url,
+            "image": anim_input_image,
             "prompt": anim_prompt,
             "loop": True,
             "fps": 10
@@ -136,5 +149,13 @@ if st.button("Generate"):
         with st.spinner("Generating animation..."):
             anim_url = replicate_client.run("wavespeedai/wan-2.1-i2v-480p", input=anim_payload)
         st.video(anim_url)
+
+        # Cleanup temporary file if used
+        if 'tmp' in locals():
+            try:
+                anim_input_image.close()
+                os.unlink(tmp.name)
+            except:
+                pass
     except Exception as e:
         st.error(f"Generation failed: {e}")
