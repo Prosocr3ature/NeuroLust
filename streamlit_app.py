@@ -55,8 +55,8 @@ with st.sidebar:
 
     steps = st.slider("Steps", 20, 100, 50)
     scale = st.slider("Guidance Scale", 1.0, 20.0, 9.0)
-    width = st.slider("Width (px)", 512, 1024, 768, step=64)
-    height = st.slider("Height (px)", 512, 1536, 1152, step=64)
+    w = st.slider("Width (px)", 512, 1024, 768, step=64)
+    h = st.slider("Height (px)", 512, 1536, 1152, step=64)
     scheduler = st.selectbox("Scheduler:", ["DPMSolverMultistep", "PNDM", "DDIM"], index=0)
 
     neg_extra = st.text_area("Extra negatives (optional):", value="", height=80).strip()
@@ -70,18 +70,18 @@ with st.sidebar:
     fps = st.slider("FPS", 5, 30, 10)
 
 # ─── Prompt Assembly ─────────────────────────────────────────────────────────
-base_prompt = (
-    "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model with wet, glistening skin and explicit nudity."
+prompt_base = (
+    "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model with wet, glistening soft skin and explicit nudity."
 )
-full_prompt = f"Perform explicitly: {action}. {base_prompt}" if action else base_prompt
+full_prompt = f"Perform explicitly: {action}. {prompt_base}" if action else prompt_base
 
-# ─── Generate Static Image ───────────────────────────────────────────────────
+# ─── Static Image Generation ──────────────────────────────────────────────────
 def generate_image():
     payload = {
         "prompt": full_prompt,
         "negative_prompt": negative_prompt,
-        "width": (width // 8) * 8,
-        "height": (height // 8) * 8,
+        "width": (w // 8) * 8,
+        "height": (h // 8) * 8,
         "guidance_scale": scale,
         "seed": seed,
         "num_inference_steps": steps,
@@ -95,20 +95,24 @@ if st.button("Generate"):
     try:
         # Static image
         with st.spinner("Generating image..."):
-            result = generate_image()
-        items = result if isinstance(result, list) else [result]
+            img_output = generate_image()
+        items = img_output if isinstance(img_output, list) else [img_output]
         img_url = None
         tmp_path = None
         for item in items:
             if hasattr(item, "url"):
-                img_url = item.url; st.image(img_url, use_container_width=True); break
+                img_url = item.url
+                st.image(img_url, use_container_width=True)
+                break
             if hasattr(item, "read"):
                 data = item.read()
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-                tmp.write(data); tmp.flush(); tmp_path = tmp.name
-                st.image(data, use_container_width=True); break
+                tmp.write(data)
+                tmp.flush()
+                tmp_path = tmp.name
+                st.image(data, use_container_width=True)
+                break
 
-        # Ensure valid source
         if not img_url and not tmp_path:
             st.error("Image generation failed.")
             st.stop()
@@ -116,13 +120,16 @@ if st.button("Generate"):
         # Animation via Stable Video Diffusion
         st.success("Image done. Generating video...")
         vid_payload = {
-            "image": img_url if img_url else open(tmp_path, "rb"),
+            "input_image": img_url if img_url else open(tmp_path, "rb"),
             "video_length": frames_length,
             "frames_per_second": fps,
             "seed": seed
         }
         with st.spinner("Generating video..."):
-            vid_output = run_with_retry("christophy/stable-video-diffusion:92a0c9a9cb1fd93ea0361d15e499dc879b35095077b2feed47315ccab4524036", vid_payload)
+            vid_output = run_with_retry(
+                "christophy/stable-video-diffusion:92a0c9a9cb1fd93ea0361d15e499dc879b35095077b2feed47315ccab4524036",
+                vid_payload
+            )
 
         # Display video
         if hasattr(vid_output, "url"):
@@ -131,12 +138,17 @@ if st.button("Generate"):
             st.video(vid_output.read())
         elif isinstance(vid_output, list):
             for v in vid_output:
-                if hasattr(v, "url"): st.video(v.url); break
-                if hasattr(v, "read"): st.video(v.read()); break
+                if hasattr(v, "url"):
+                    st.video(v.url)
+                    break
+                if hasattr(v, "read"):
+                    st.video(v.read())
+                    break
         else:
             st.error("Unrecognized video output.")
 
     except Exception as e:
         st.error(f"Error: {e}")
     finally:
-        if tmp_path and os.path.exists(tmp_path): os.unlink(tmp_path)
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
