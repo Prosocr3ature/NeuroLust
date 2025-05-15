@@ -50,7 +50,7 @@ with st.sidebar:
     config = IMAGE_MODELS[model_choice]
 
     user_action = st.text_area(
-        "What is Jasmine doing? (pose, action)",
+        "Describe Jasmine's pose/action (explicit allowed):",
         height=120,
         placeholder="e.g. spreading legs, doggystyle, licking, riding, POV blowjob"
     )
@@ -58,26 +58,24 @@ with st.sidebar:
     # Dynamic sliders based on model's default
     steps = st.slider("Sampling Steps", 20, 100, config["steps"])
     scale = st.slider("Guidance Scale", 5.0, 15.0, config["scale"])
-    width = st.slider("Width", 512, 1024, config["width"], step=64)
-    height = st.slider("Height", 512, 1536, config["height"], step=64)
+    width = st.slider("Image Width (px)", 512, 1024, config["width"], step=64)
+    height = st.slider("Image Height (px)", 512, 1536, config["height"], step=64)
 
     schedulers = config["schedulers"]
-    scheduler = st.selectbox("Scheduler", schedulers, index=schedulers.index(config["scheduler"]))
+    scheduler = st.selectbox("Diffusion Scheduler", schedulers, index=schedulers.index(config["scheduler"]))
 
-    # Strong negative prompt always enforced, but user can add to it
-    negative_prompt = st.text_area(
-        "Extra Negative Prompt (optional)",
+    user_extra_negative = st.text_area(
+        "Extra negative cues (optional):",
         value="",
         height=50
     )
-    full_negative_prompt = NEGATIVE_PROMPT + (", " + negative_prompt.strip() if negative_prompt.strip() else "")
+    full_negative_prompt = NEGATIVE_PROMPT + (", " + user_extra_negative.strip() if user_extra_negative.strip() else "")
 
     seed_random = st.checkbox("Use random seed", value=True)
-    seed = random.randint(1, 999999) if seed_random else st.number_input("Seed", value=1337)
+    seed = random.randint(1, 999999) if seed_random else st.number_input("Seed value", value=1337)
 
 # ─── Prompt Assembly ─────────────────────────────────────────────────────────
 if user_action.strip():
-    # Make action/pose absolutely explicit and prioritized
     action_phrase = f" She is {user_action.strip()}. This is explicit and must be shown with no censorship."
 else:
     action_phrase = " She is posing erotically."
