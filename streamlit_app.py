@@ -1,7 +1,5 @@
 import streamlit as st
 import replicate
-import io
-from PIL import Image
 import random
 
 # ─── Page Config ─────────────────────────────────────────────────────────────
@@ -15,29 +13,22 @@ if "REPLICATE_API_TOKEN" not in st.secrets:
 
 replicate_client = replicate.Client(api_token=st.secrets["REPLICATE_API_TOKEN"])
 
-# ─── Available Models ────────────────────────────────────────────────────────
+# ─── Model Definitions & Schedulers ──────────────────────────────────────────
 IMAGE_MODELS = {
     "Realism XL (Uncensored)": {
         "ref": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
-        "steps": 45,
-        "scale": 8.0,
-        "width": 768,
-        "height": 1152,
-        "scheduler": "DPMSolverMultistep",
-        "preview": "https://replicate.delivery/pbxt/JqTfP3xup0D7quhKApwciUzEKCm36DyW7zHAcJ05ev8FuqaIA/out-0.png"
+        "steps": 45, "scale": 8.0, "width": 768, "height": 1152,
+        "schedulers": ["DPMSolverMultistep", "PNDM", "DDIM", "HeunDiscrete", "KarrasDPM", "K_EULER_ANCESTRAL", "K_EULER"],
+        "scheduler": "DPMSolverMultistep"
     },
     "Aisha Illust3 Relustion": {
         "ref": "aisha-ai-official/illust3relustion:7ff25c52350d3ef76aba554a6ae0b327331411572aeb758670a1034da3f1fec8",
-        "steps": 40,
-        "scale": 9.0,
-        "width": 768,
-        "height": 1152,
-        "scheduler": "PNDM",
-        "preview": None
+        "steps": 40, "scale": 9.0, "width": 768, "height": 1152,
+        "schedulers": ["PNDM", "DDIM", "DPMSolverMultistep", "HeunDiscrete", "K_EULER_ANCESTRAL", "K_EULER"],
+        "scheduler": "PNDM"
     }
 }
 
-# ─── Jasmine Base Prompt ─────────────────────────────────────────────────────
 JASMINE_BASE = (
     "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model "
     "with glistening, wet soft skin and hyper-realistic detail. She has voluptuous curves—huge "
@@ -46,46 +37,66 @@ JASMINE_BASE = (
     "sharp focus, intricate textures, explicit nudity."
 )
 
-# ─── UI ──────────────────────────────────────────────────────────────────────
+NEGATIVE_PROMPT = (
+    "ugly face, poorly drawn hands, poorly drawn feet, blurry, lowres, extra limbs, "
+    "cartoon, censored, watermark, jpeg artifacts, nsfw warning, error, cropped, out of frame, "
+    "bad proportions, unnatural colors, bad anatomy, unrealistic, duplicate"
+)
+
+# ─── Sidebar ─────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Model Settings")
     model_choice = st.selectbox("Choose image model:", list(IMAGE_MODELS.keys()))
+    config = IMAGE_MODELS[model_choice]
 
     user_action = st.text_area(
         "What is Jasmine doing? (pose, action)",
-        height=150,
+        height=120,
         placeholder="e.g. spreading legs, doggystyle, licking, riding, POV blowjob"
     )
 
-    full_prompt = f"{JASMINE_BASE} {user_action.strip()}" if user_action.strip() else JASMINE_BASE
+    # Dynamic sliders based on model's default
+    steps = st.slider("Sampling Steps", 20, 100, config["steps"])
+    scale = st.slider("Guidance Scale", 5.0, 15.0, config["scale"])
+    width = st.slider("Width", 512, 1024, config["width"], step=64)
+    height = st.slider("Height", 512, 1536, config["height"], step=64)
 
+    schedulers = config["schedulers"]
+    scheduler = st.selectbox("Scheduler", schedulers, index=schedulers.index(config["scheduler"]))
+
+    # Strong negative prompt always enforced, but user can add to it
     negative_prompt = st.text_area(
-        "Negative Prompt",
-        value="ugly face, poorly drawn hands, lowres, blurry, extra limbs, cartoon, watermark, censored, jpeg artifacts",
-        height=80
+        "Extra Negative Prompt (optional)",
+        value="",
+        height=50
     )
+    full_negative_prompt = NEGATIVE_PROMPT + (", " + negative_prompt.strip() if negative_prompt.strip() else "")
 
     seed_random = st.checkbox("Use random seed", value=True)
     seed = random.randint(1, 999999) if seed_random else st.number_input("Seed", value=1337)
 
+# ─── Prompt Assembly ─────────────────────────────────────────────────────────
+if user_action.strip():
+    # Make action/pose absolutely explicit and prioritized
+    action_phrase = f" She is {user_action.strip()}. This is explicit and must be shown with no censorship."
+else:
+    action_phrase = " She is posing erotically."
+
+full_prompt = JASMINE_BASE + action_phrase
+
 # ─── Generate Button ─────────────────────────────────────────────────────────
 if st.button("Generate"):
-    if not user_action.strip():
-        st.warning("Please describe what Jasmine is doing.")
-        st.stop()
-
     st.info(f"Generating with {model_choice}…")
-    config = IMAGE_MODELS[model_choice]
 
     payload = {
         "prompt": full_prompt.strip(),
-        "negative_prompt": negative_prompt.strip(),
-        "width": config["width"],
-        "height": config["height"],
-        "guidance_scale": config["scale"],
+        "negative_prompt": full_negative_prompt.strip(),
+        "width": int(width // 8) * 8,
+        "height": int(height // 8) * 8,
+        "guidance_scale": scale,
         "seed": seed,
-        "num_inference_steps": config["steps"],
-        "scheduler": config["scheduler"]
+        "num_inference_steps": steps,
+        "scheduler": scheduler
     }
 
     try:
@@ -94,11 +105,11 @@ if st.button("Generate"):
 
         def show_image(item):
             if hasattr(item, "read"):
-                st.image(item.read(), use_column_width=True)
+                st.image(item.read(), use_container_width=True)
             elif hasattr(item, "url"):
-                st.image(item.url, use_column_width=True)
+                st.image(item.url, use_container_width=True)
             elif isinstance(item, str) and item.startswith("http"):
-                st.image(item, use_column_width=True)
+                st.image(item, use_container_width=True)
             else:
                 st.error("Unrecognized output format.")
                 st.write(item)
