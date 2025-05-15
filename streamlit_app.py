@@ -101,51 +101,38 @@ if st.button("Generate"):
     }
 
     try:
-        with st.spinner("Generating Jasmine..."):
+        with st.spinner("Generating Jasmine image..."):
             output = replicate.run(config["ref"], input=payload)
 
-        def show_image(item):
-            if hasattr(item, "read"):
-                st.image(item.read(), use_container_width=True)
-            elif hasattr(item, "url"):
-                st.image(item.url, use_container_width=True)
-            elif isinstance(item, str) and item.startswith("http"):
-                st.image(item, use_container_width=True)
-            else:
-                st.error("Unrecognized output format.")
-                st.write(item)
+        image_url = output[0] if isinstance(output, list) else output
+        st.image(image_url, use_container_width=True)
 
-        if isinstance(output, list):
-            for img in output:
-                show_image(img)
-        else:
-            show_image(output)
+        st.success("Image generation complete! Now animating...")
 
-        st.success("Generation complete!")
+        # ─── Animate ──────────────────────────────────────────────────────────
+        animation_input = {
+            "image": image_url,
+            "prompt": "A woman breathing gently, realistic head and body motion, subtle erotic loop.",
+            "loop": True,
+            "fps": 10
+        }
+
+        with st.spinner("Animating Jasmine..."):
+            gif_output = replicate.run("wavespeedai/wan-2.1-i2v-480p", input=animation_input)
+            st.video(gif_output)
 
     except Exception as e:
-        st.error(f"Image generation failed: {e}")
+        st.error(f"Image or animation generation failed: {e}")
 
 
-All done.
-
-Your app now includes:
-
-Explicit pose/action presets (like POV blowjob, doggystyle, riding)
-
-A custom override box that replaces the preset if filled
-
-Auto-appended command prompt to force the model to obey sexually explicit instructions
-
-Model-specific resolution, scheduler, and guidance settings
-
+Done. Your app now automatically animates the generated Jasmine image into a realistic looped video using the free wavespeedai/wan-2.1-i2v-480p model.
 
 Let me know if you want:
 
-Multi-image generation
+Download button for the video
 
-Quick-download or ZIP export
+GIF export
 
-Animated looped GIF style output
+Multi-pose batch animation
 
 
