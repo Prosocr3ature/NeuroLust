@@ -21,8 +21,7 @@ def run_with_retry(model_ref, payload, retries=3, backoff=2):
         try:
             return replicate_client.run(model_ref, input=payload)
         except replicate.exceptions.ReplicateError as e:
-            err_str = str(e).lower()
-            if "503" in err_str or "internal server error" in err_str:
+            if any(code in str(e).lower() for code in ["503", "internal server error"]):
                 if attempt < retries - 1:
                     time.sleep(backoff * (attempt + 1))
                     continue
@@ -47,7 +46,7 @@ IMAGE_MODELS = {
 # ─── Base Prompts ─────────────────────────────────────────────────────────────
 JASMINE_BASE = (
     "Ultra-photorealistic 8K portrait of Princess Jasmine from Aladdin as a glamorous model with glistening, wet soft skin and hyper-realistic detail. "
-    "She has voluptuous curves—huge round breasts with nipple piercings, a tiny waist, thick thighs, and a sculpted, big sexy ass—adorned in sheer blue fishnet stockings, no underwear, pussy showing. "
+    "She has voluptuous curves—huge round breasts with nipple piercings, a tiny waist, thick thighs, and a sculpted, big sexy ass —adorned in sheer blue fishnet stockings, no underwear, pussy showing. "
     "Cinematic studio lighting, sharp focus, intricate textures, explicit nudity."
 )
 NEGATIVE_PROMPT = (
@@ -57,11 +56,8 @@ NEGATIVE_PROMPT = (
 # ─── Pose Presets ─────────────────────────────────────────────────────────────
 POSE_PRESETS = {
     "None": "",
-    "POV Blowjob": "POV deepthroat blowjob, eyes locked on viewer, mouth wrapped around large cock, saliva dripping, explicit oral",
-    "Doggy Style": "doggystyle from behind, full penetration, arched back, wet skin, thrusting",
-    "Cowgirl Ride": "cowgirl position riding a large cock, bouncing motion, breasts jiggling, intense gaze",
-    "Spread Legs": "laying back with legs spread wide, full pussy exposure, hands on thighs, direct eye contact",
-    "Face Covered in Cum": "cum dripping on face, messy hair, tongue out, lustful eyes"
+    "POV Blowjob": "deepthroat blowjob in POV, mouth fully covering a large erect cock, eyes locked on viewer, saliva dripping, explicit oral",
+    "Doggy Style": "doggystyle from behind, deep penetration, arched back, wet skin, thrusting"
 }
 
 # ─── Sidebar UI ────────────────────────────────────────────────────────────────
@@ -70,41 +66,37 @@ with st.sidebar:
     model_choice = st.selectbox("Choose model:", list(IMAGE_MODELS.keys()))
     config = IMAGE_MODELS[model_choice]
 
-    pose_choice = st.selectbox("Pose Preset:", list(POSE_PRESETS.keys()))
-    preset_text = POSE_PRESETS[pose_choice]
-    custom_text = st.text_area(
-        "Custom Pose/Action (overrides preset):",
-        height=100,
-        placeholder="e.g. handjob POV, licking, mounting from behind"
-    ).strip()
-    action_text = custom_text if custom_text else preset_text
+    preset = st.selectbox("Pose Preset:", list(POSE_PRESETS.keys()))
+    custom = st.text_area("Custom Pose/Action (overrides):", height=100,
+                         placeholder="e.g. licking, handjob, mounting from behind").strip()
+    action = custom if custom else POSE_PRESETS[preset]
 
-    steps = st.slider("Sampling Steps", 20, 100, config["steps"])
+    steps = st.slider("Steps", 20, 100, config["steps"])
     scale = st.slider("Guidance Scale", 5.0, 15.0, config["scale"])
-    width = st.slider("Width (px)", 512, 1024, config["width"], step=64)
-    height = st.slider("Height (px)", 512, 1536, config["height"], step=64)
-    scheduler = st.selectbox(
-        "Scheduler:",
-        config["schedulers"],
-        index=config["schedulers"].index(config["scheduler"])
-    )
+    w = st.slider("Width", 512, 1024, config["width"], step=64)
+    h = st.slider("Height", 512, 1536, config["height"], step=64)
+    scheduler = st.selectbox("Scheduler:", config["schedulers"],
+                             index=config["schedulers"].index(config["scheduler"]))
 
-    extra_neg = st.text_area("Add extra negatives (optional):", value="", height=80).strip()
-    negative_prompt = NEGATIVE_PROMPT + (", " + extra_neg if extra_neg else "")
+    extra_neg = st.text_area("Extra Negative Terms (optional):", value="", height=80).strip()
+    neg = NEGATIVE_PROMPT + (", " + extra_neg if extra_neg else "")
 
-    seed_random = st.checkbox("Random seed", value=True)
-    seed = random.randint(1, 999999) if seed_random else st.number_input("Seed:", value=1337)
+    use_rand = st.checkbox("Random seed", value=True)
+    seed = random.randint(1, 999999) if use_rand else st.number_input("Seed:", value=1337)
 
 # ─── Prompt Assembly ─────────────────────────────────────────────────────────
-full_prompt = f"{action_text}, {JASMINE_BASE}" if action_text else JASMINE_BASE
+if action:
+    full_prompt = f"Perform explicitly: {action}. {JASMINE_BASE}"
+else:
+    full_prompt = JASMINE_BASE
 
-# ─── Generation Helper ───────────────────────────────────────────────────────
+# ─── Generation ───────────────────────────────────────────────────────────────
 def generate_image():
     payload = {
-        "prompt": full_prompt.strip(),
-        "negative_prompt": negative_prompt.strip(),
-        "width": int(width // 8) * 8,
-        "height": int(height // 8) * 8,
+        "prompt": full_prompt,
+        "negative_prompt": neg,
+        "width": (w // 8) * 8,
+        "height": (h // 8) * 8,
         "guidance_scale": scale,
         "seed": seed,
         "num_inference_steps": steps,
@@ -112,62 +104,58 @@ def generate_image():
     }
     return run_with_retry(config["ref"], payload)
 
-# ─── Generate & Animate ───────────────────────────────────────────────────────
 if st.button("Generate"):
-    st.info(f"Using model: {model_choice}")
+    st.info(f"Using {model_choice}")
     try:
-        # Static image generation
+        # Static image
         with st.spinner("Generating image..."):
-            result = generate_image()
-        items = result if isinstance(result, list) else [result]
-        image_url = None
-        raw_bytes = None
-        for img in items:
-            if hasattr(img, "read"):
-                raw_bytes = img.read()
-                st.image(raw_bytes, use_container_width=True)
-            elif hasattr(img, "url"):
-                image_url = img.url
-                st.image(image_url, use_container_width=True)
-            elif isinstance(img, str) and img.startswith("http"):
-                image_url = img
-                st.image(image_url, use_container_width=True)
+            out = generate_image()
+        items = out if isinstance(out, list) else [out]
+        img_url = None
+        temp_file = None
+        for i in items:
+            if hasattr(i, "url"):
+                img_url = i.url
+                st.image(img_url, use_container_width=True)
+                break
+            if hasattr(i, "read"):
+                data = i.read()
+                temp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                temp.write(data)
+                temp.flush()
+                temp_file = temp.name
+                st.image(data, use_container_width=True)
+                img_url = None
+                break
 
-        if not image_url and not raw_bytes:
-            st.error("Failed to retrieve image data for animation.")
+        # Animation input selection
+        if img_url:
+            anim_img = img_url
+        elif temp_file:
+            anim_img = open(temp_file, "rb")
+        else:
+            st.error("No valid image for animation.")
             st.stop()
 
-        # Prepare and run animation using wavespeedai/wan-2.1-i2v-480p
-        anim_source = image_url if image_url else raw_bytes
-        anim_prompt = f"{action_text}, subtle realistic movement loop, breathing and slight motion"
+        # Animate
+        st.success("Animating...")
         anim_payload = {
-            "image": anim_source,
-            "prompt": anim_prompt,
+            "image": anim_img,
+            "prompt": full_prompt,
             "loop": True,
             "fps": 10
         }
-
-        st.success("Image generated. Now animating...")
         with st.spinner("Generating animation..."):
-            anim_result = run_with_retry("wavespeedai/wan-2.1-i2v-480p", anim_payload)
+            anim_out = run_with_retry("wavespeedai/wan-2.1-i2v-480p", anim_payload)
 
-        # Display the looped video
-        if hasattr(anim_result, "read"):
-            st.video(anim_result.read())
-        elif hasattr(anim_result, "url"):
-            st.video(anim_result.url)
-        elif isinstance(anim_result, str) and anim_result.startswith("http"):
-            st.video(anim_result)
-        elif isinstance(anim_result, list):
-            for a in anim_result:
-                if hasattr(a, "read"):
-                    st.video(a.read())
-                    break
-                if hasattr(a, "url"):
-                    st.video(a.url)
-                    break
-        else:
-            st.error("Unrecognized animation output.")
+        # Display video
+        if hasattr(anim_out, "url"):
+            st.video(anim_out.url)
+        elif hasattr(anim_out, "read"):
+            st.video(anim_out.read())
 
+        # Cleanup
+        if temp_file:
+            os.unlink(temp_file)
     except Exception as e:
-        st.error(f"Generation failed: {e}")
+        st.error(f"Error: {e}")
