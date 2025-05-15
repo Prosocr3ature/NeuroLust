@@ -64,12 +64,13 @@ with st.sidebar:
     schedulers = config["schedulers"]
     scheduler = st.selectbox("Diffusion Scheduler", schedulers, index=schedulers.index(config["scheduler"]))
 
-    user_extra_negative = st.text_area(
-        "Extra negative cues (optional):",
+    # UNIQUE LABEL for extra negative prompt
+    extra_negative = st.text_area(
+        "Add extra negative prompt terms (optional):",
         value="",
         height=50
     )
-    full_negative_prompt = NEGATIVE_PROMPT + (", " + user_extra_negative.strip() if user_extra_negative.strip() else "")
+    full_negative_prompt = NEGATIVE_PROMPT + (", " + extra_negative.strip() if extra_negative.strip() else "")
 
     seed_random = st.checkbox("Use random seed", value=True)
     seed = random.randint(1, 999999) if seed_random else st.number_input("Seed value", value=1337)
