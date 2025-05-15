@@ -30,7 +30,7 @@ def run_with_retry(model_ref, payload, retries=3, backoff=2):
 # ─── Models & Prompts ─────────────────────────────────────────────────────────
 IMAGE_MODELS = {
     "Realism XL (Uncensored)": "asiryan/realism-xl:ff26a1f71bc27f43de016f109135183e0e4902d7cdabbcbb177f4f8817112219",
-    "Aisha Flux Uncensored": "aisha-ai-official/flux.1dev-uncensored-colossus-v5:13f8afae9c06740b24e2d22a0fd7b4889c7381f72b49ce9cefc5fff34bdf51e2"
+    "Aisha Centerfold v9": "aisha-ai-official/centerfold-v9:93d4b4d9a8c6f39384ed5ba439ee24c1769c8c8fe292db3e3800d2c627f03bb0"
 }
 POSE_PRESETS = {
     "None": "",
