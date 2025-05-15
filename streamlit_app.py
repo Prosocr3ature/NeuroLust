@@ -121,19 +121,42 @@ else:
 
 # ─── Static Image Generation ──────────────────────────────────────────────────
 def generate_image():
-    payload = {
-        "prompt": static_prompt,
-        "negative_prompt": negative_prompt,
-        "width": (width // 8) * 8,
-        "height": (height // 8) * 8,
-        "guidance_scale": scale,
-        "seed": seed,
-        "num_inference_steps": steps,
-        "scheduler": scheduler
-    }
+    # Build payload differently for Aisha vs Realism XL
+    if model_name == "Aisha Illust3 Relustion":
+        # Aisha Illust3 Relustion expects a different schema
+        payload = {
+            "model": "Illust3Relustion",
+            "vae": "default",
+            "prompt_conjunction": False,
+            "prompt": static_prompt,
+            "negative_prompt_conjunction": False,
+            "negative_prompt": negative_prompt,
+            "cfg_scale": scale,
+            "guidance_rescale": 1.0,
+            "pag_scale": 0.0,
+            "clip_skip": 2,
+            "width": width,
+            "height": height,
+            "upscale": "Original",
+            "refiner": False,
+            "prepend_preprompt": False,
+            # uses its own defaults for refiner and scheduler
+        }
+    else:
+        # Realism XL or other text-to-image models
+        payload = {
+            "prompt": static_prompt,
+            "negative_prompt": negative_prompt,
+            "width": (width // 8) * 8,
+            "height": (height // 8) * 8,
+            "guidance_scale": scale,
+            "seed": seed,
+            "num_inference_steps": steps,
+            "scheduler": scheduler
+        }
     return run_with_retry(model_ref, payload)
 
-# ─── Main Execution ──────────────────────────────────────────────────────────
+# ─── Main Execution ────────────────────────────────────────────────────────── ──────────────────────────────────────────────────────────
 if st.button("Generate"):
     st.info(f"Generating static image with {model_name}...")
     tmp_file = None
